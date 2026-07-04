@@ -19,6 +19,7 @@ services:
 
   celery:
     build: .
+    entrypoint: ["/app/entrypoint-worker.sh"]
     command: celery -A config worker -l info --concurrency=1
     volumes:
       - .:/app
@@ -36,6 +37,7 @@ services:
 
   celery-beat:
     build: .
+    entrypoint: ["/app/entrypoint-worker.sh"]
     command: celery -A config beat -l info
     volumes:
       - .:/app

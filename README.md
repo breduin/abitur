@@ -56,6 +56,18 @@ make createsuperuser   # создать администратора
 3. Пользователь входит на сайт по своему ID → админ ставит `is_verified=True`
 4. В ЛК указать баллы и вузы с поданными заявлениями
 
+> **Важно:** миграции выполняет только контейнер `web`. Celery и Beat ждут готовности БД. Если при первом запуске celery упал с `table already exists` — это гонка миграций; после обновления кода: `make rerun`.
+
+## Переменные окружения
+
+В `.env` для Docker путь к БД переопределяется в `docker-compose.yml`:
+
+```
+DATABASE_PATH=/app/data/db.sqlite3
+```
+
+Локально без Docker можно оставить `DATABASE_PATH=data/db.sqlite3`.
+
 ## Документация
 
 - [Источники данных и API медвузов](docs/data-sources.md)
