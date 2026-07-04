@@ -1,0 +1,7 @@
+Django==5.2.*
+celery[redis]
+redis
+requests
+gunicorn
+django-environ
+whitenoise

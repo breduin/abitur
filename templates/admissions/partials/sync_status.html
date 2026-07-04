@@ -1,0 +1,10 @@
+{% if rate_limited_jobs %}
+<div class="alert alert-warning">
+    Источник временно недоступен:
+    <ul class="mb-0">
+        {% for job in rate_limited_jobs %}
+        <li>{{ job.direction }} — повтор после {{ job.next_retry_at|date:"d.m.Y H:i" }}</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}

@@ -1,0 +1,81 @@
+:root {
+    --primary-blue: #4DA6FF;
+    --accent-pink: #FF6B9D;
+}
+
+.bg-primary-custom {
+    background: linear-gradient(135deg, #2563a8 0%, #1a4f8a 100%) !important;
+}
+
+.site-navbar {
+    background: linear-gradient(135deg, #4DA6FF 0%, #3b8fd9 100%) !important;
+}
+
+.site-navbar .navbar-brand,
+.site-navbar .navbar-nav .nav-link {
+    color: #0f2d4d !important;
+    font-weight: 600;
+}
+
+.site-navbar .navbar-nav .nav-link:hover,
+.site-navbar .navbar-nav .nav-link:focus {
+    color: var(--accent-pink) !important;
+}
+
+.site-navbar .navbar-user-id {
+    font-weight: 500;
+    font-size: 0.9em;
+    opacity: 0.85;
+}
+
+.card-header.bg-primary-custom,
+.card-header.bg-primary-custom .h5 {
+    color: #ffffff;
+}
+
+.bg-accent {
+    background-color: var(--accent-pink) !important;
+}
+
+.text-accent {
+    color: var(--accent-pink) !important;
+}
+
+.btn-accent {
+    background-color: var(--accent-pink);
+    border-color: var(--accent-pink);
+    color: #fff;
+}
+
+.btn-accent:hover {
+    background-color: #e55a8a;
+    border-color: #e55a8a;
+    color: #fff;
+}
+
+.border-accent {
+    border-color: var(--accent-pink) !important;
+}
+
+.htmx-indicator {
+    display: none;
+}
+
+.htmx-request .htmx-indicator,
+.htmx-request.htmx-indicator {
+    display: inline-block;
+}
+
+.card-header.bg-accent,
+.card-header.bg-primary-custom {
+    border-bottom: none;
+}
+
+body {
+    background: linear-gradient(135deg, #f0f8ff 0%, #fff5f8 100%);
+    min-height: 100vh;
+}
+
+.table thead th {
+    background-color: rgba(77, 166, 255, 0.1);
+}

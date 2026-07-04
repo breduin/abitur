@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Абитуриент{% endblock %}</title>
+    <meta name="csrf-token" content="{{ csrf_token }}">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'css/theme.css' %}">
+    <style>
+        .site-navbar {
+            background: linear-gradient(135deg, #4DA6FF 0%, #3b8fd9 100%) !important;
+        }
+        .site-navbar .navbar-brand,
+        .site-navbar .navbar-nav .nav-link {
+            color: #0f2d4d !important;
+            font-weight: 600;
+        }
+        .site-navbar .navbar-nav .nav-link:hover,
+        .site-navbar .navbar-nav .nav-link:focus {
+            color: #FF6B9D !important;
+        }
+        .site-navbar .navbar-user-id {
+            font-weight: 500;
+            font-size: 0.9em;
+            opacity: 0.85;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg site-navbar mb-4">
+        <div class="container">
+            <a class="navbar-brand fw-bold" href="{% url 'dashboard' %}">
+                Абитуриент{% if user.is_authenticated %}<span class="navbar-user-id"> · {{ user.abiturient_id }}</span>{% endif %}
+            </a>
+            {% if user.is_authenticated %}
+            <div class="navbar-nav ms-auto align-items-center flex-row gap-3">
+                <a class="nav-link px-2" href="{% url 'dashboard' %}">Главная</a>
+                <a class="nav-link px-2" href="{% url 'cabinet' %}">Личный кабинет</a>
+                <form method="post" action="{% url 'logout' %}" class="d-inline">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-outline-dark btn-sm">Выйти</button>
+                </form>
+            </div>
+            {% endif %}
+        </div>
+    </nav>
+
+    <main class="container pb-5">
+        {% if messages %}
+            {% for message in messages %}
+                <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            {% endfor %}
+        {% endif %}
+
+        {% block content %}{% endblock %}
+    </main>
+    <script>
+        document.body.addEventListener('htmx:configRequest', (event) => {
+            const token = document.querySelector('meta[name="csrf-token"]');
+            if (token) {
+                event.detail.headers['X-CSRFToken'] = token.content;
+            }
+        });
+    </script>
+</body>
+</html>

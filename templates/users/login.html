@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block title %}Вход — Абитуриент{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-5">
+        <div class="card shadow-sm border-accent">
+            <div class="card-header bg-primary-custom text-white">
+                <h1 class="h4 mb-0">Вход</h1>
+            </div>
+            <div class="card-body">
+                {% if message %}
+                    <div class="alert alert-warning">{{ message }}</div>
+                {% endif %}
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        {{ form.abiturient_id.label_tag }}
+                        {{ form.abiturient_id }}
+                    </div>
+                    <button type="submit" class="btn btn-accent w-100">Войти</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

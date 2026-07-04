@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block title %}Главная — Абитуриент{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+    <h1 class="h3 mb-0">Мои позиции</h1>
+    <div>
+        <button
+            class="btn btn-accent"
+            hx-post="{% url 'refresh_data' %}"
+            hx-target="#refresh-message"
+            hx-swap="innerHTML"
+            hx-indicator="#refresh-spinner"
+        >
+            Обновить данные сейчас
+        </button>
+        <span id="refresh-spinner" class="htmx-indicator spinner-border spinner-border-sm text-accent ms-2"></span>
+    </div>
+</div>
+<div id="refresh-message"></div>
+
+{% include "admissions/partials/sync_status.html" %}
+
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-primary-custom text-white">
+        <h2 class="h5 mb-0">Текущие позиции</h2>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>Медицинский университет</th>
+                    <th>Направление</th>
+                    <th>Позиция</th>
+                    <th>Баллы</th>
+                    <th>Статус</th>
+                    <th>Приоритет</th>
+                    <th>Согласие</th>
+                    <th>Тип</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in current_positions %}
+                <tr>
+                    <td>{{ row.university_name }}</td>
+                    <td>{{ row.direction_name }}</td>
+                    <td>{% if row.position %}{{ row.position }}{% else %}—{% endif %}</td>
+                    <td>{% if row.nsummark %}{{ row.nsummark }}{% else %}—{% endif %}</td>
+                    <td>{{ row.sstatus_ssp|default:"—" }}</td>
+                    <td>{% if row.npriority_ssp is not None %}{{ row.npriority_ssp }}{% else %}—{% endif %}</td>
+                    <td>
+                        {% if row.has_enrollment_consent is None %}—
+                        {% elif row.has_enrollment_consent %}Да
+                        {% else %}Нет{% endif %}
+                    </td>
+                    <td>
+                        {% if row.is_hypothetical %}
+                            <span class="badge bg-secondary">Оценка</span>
+                        {% else %}
+                            <span class="badge bg-success">Факт</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="8" class="text-muted">Нет данных</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-header bg-accent text-white">
+        <h2 class="h5 mb-0">Прогноз (среди чужих с приоритетом 1)</h2>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>Медицинский университет</th>
+                    <th>Направление</th>
+                    <th>Прогнозная позиция</th>
+                    <th>Баллы</th>
+                    <th>Тип</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in forecast_positions %}
+                <tr>
+                    <td>{{ row.university_name }}</td>
+                    <td>{{ row.direction_name }}</td>
+                    <td>{% if row.position %}{{ row.position }}{% else %}—{% endif %}</td>
+                    <td>{% if row.nsummark %}{{ row.nsummark }}{% else %}—{% endif %}</td>
+                    <td>
+                        {% if row.is_hypothetical %}
+                            <span class="badge bg-secondary">Оценка</span>
+                        {% else %}
+                            <span class="badge bg-success">Факт</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="5" class="text-muted">Нет данных</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<p class="text-muted text-end mt-3 mb-0 small">
+    {% if last_data_update %}
+        Последнее обновление данных: {{ last_data_update|date:"d.m.Y H:i" }}
+    {% else %}
+        Данные ещё не обновлялись
+    {% endif %}
+</p>
+{% endblock %}

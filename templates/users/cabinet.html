@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}Личный кабинет — Абитуриент{% endblock %}
+
+{% block content %}
+<h1 class="h3 mb-4">Личный кабинет</h1>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <form method="post">
+            {% csrf_token %}
+            <div class="mb-3">
+                <label class="form-label">{{ form.ege_total_score.label }}</label>
+                {{ form.ege_total_score }}
+            </div>
+            <div class="form-check mb-3">
+                {{ form.has_honors_diploma }}
+                <label class="form-check-label">{{ form.has_honors_diploma.label }}</label>
+            </div>
+            <fieldset class="mb-4">
+                <legend class="form-label fs-6">{{ form.applied_universities.label }}</legend>
+                {% for checkbox in form.applied_universities %}
+                    <div class="form-check">
+                        {{ checkbox.tag }}
+                        <label class="form-check-label">{{ checkbox.choice_label }}</label>
+                    </div>
+                {% endfor %}
+            </fieldset>
+            <button type="submit" class="btn btn-accent">Сохранить</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

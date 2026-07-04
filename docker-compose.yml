@@ -1,0 +1,57 @@
+services:
+  web:
+    build: .
+    command: gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 2
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+      - ./apps/users/migrations:/app/apps/users/migrations
+      - ./apps/universities/migrations:/app/apps/universities/migrations
+      - ./apps/admissions/migrations:/app/apps/admissions/migrations
+      - sqlite_data:/app/data
+    env_file:
+      - .env
+    environment:
+      - DATABASE_PATH=/app/data/db.sqlite3
+    depends_on:
+      - redis
+
+  celery:
+    build: .
+    command: celery -A config worker -l info --concurrency=1
+    volumes:
+      - .:/app
+      - ./apps/users/migrations:/app/apps/users/migrations
+      - ./apps/universities/migrations:/app/apps/universities/migrations
+      - ./apps/admissions/migrations:/app/apps/admissions/migrations
+      - sqlite_data:/app/data
+    env_file:
+      - .env
+    environment:
+      - DATABASE_PATH=/app/data/db.sqlite3
+    depends_on:
+      - redis
+      - web
+
+  celery-beat:
+    build: .
+    command: celery -A config beat -l info
+    volumes:
+      - .:/app
+      - sqlite_data:/app/data
+    env_file:
+      - .env
+    environment:
+      - DATABASE_PATH=/app/data/db.sqlite3
+    depends_on:
+      - redis
+      - web
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+volumes:
+  sqlite_data:

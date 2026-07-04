@@ -1,0 +1,102 @@
+FIRST_MED_NAME = "Первый мед (СПб)"
+PEDIATRIC_NAME = "Педиатрический (СПб)"
+
+FIRST_MED_API_CONFIG = {
+    "provider": "1spbgmu",
+    "base_url": "https://abit.1spbgmu.ru",
+    "csrf_page": "/hod-priema/spiski-postupayushih/",
+    "list_endpoint": "/applcompetlist/page/",
+    "referer": "https://abit.1spbgmu.ru/hod-priema/spiski-postupayushih/",
+}
+
+FIRST_MED_DIRECTIONS = [
+    {
+        "name": "Педиатрия",
+        "seats": 15,
+        "filter_params": {
+            "sedprofile_name": "Педиатрия",
+            "sfaculty_name": "Педиатрический факультет",
+            "splacekindname": "Бюджет (Общий конкурс)",
+            "srecruitment": "ВПО-2026",
+        },
+    },
+    {
+        "name": "Лечебное дело",
+        "seats": 135,
+        "filter_params": {
+            "srecruitment": "ВПО-2026",
+            "sfaculty_name": "Лечебный факультет",
+            "sedprofile_name": "Лечебное дело",
+            "splacekindname": "Бюджет (Общий конкурс)",
+        },
+    },
+]
+
+PEDIATRIC_API_CONFIG = {
+    "provider": "gpmu",
+    "base_url": "https://spiski.gpmu.org",
+    "page_size": 100,
+}
+
+PEDIATRIC_DIRECTIONS = [
+    {
+        "name": "Лечебное дело",
+        "filter_params": {"group_id": "kg_4"},
+    },
+    {
+        "name": "Педиатрия",
+        "filter_params": {"group_id": "kg_16"},
+    },
+]
+
+
+def _ensure_university_directions(university, api_config, directions):
+    from apps.universities.models import MedicalUniversity, StudyDirection
+
+    if not university.api_config:
+        university.api_config = api_config
+        university.save(update_fields=["api_config"])
+
+    for direction_data in directions:
+        direction, created = StudyDirection.objects.get_or_create(
+            university=university,
+            name=direction_data["name"],
+            defaults={
+                "filter_params": direction_data["filter_params"],
+                "seats": direction_data.get("seats"),
+            },
+        )
+        updates = {}
+        if direction.filter_params != direction_data["filter_params"]:
+            updates["filter_params"] = direction_data["filter_params"]
+        if "seats" in direction_data and direction.seats != direction_data["seats"]:
+            updates["seats"] = direction_data["seats"]
+        if updates:
+            for field, value in updates.items():
+                setattr(direction, field, value)
+            direction.save(update_fields=list(updates.keys()))
+
+
+def ensure_first_med_seed():
+    from apps.universities.models import MedicalUniversity
+
+    university, _ = MedicalUniversity.objects.get_or_create(
+        name=FIRST_MED_NAME,
+        defaults={"api_config": FIRST_MED_API_CONFIG},
+    )
+    _ensure_university_directions(university, FIRST_MED_API_CONFIG, FIRST_MED_DIRECTIONS)
+
+
+def ensure_pediatric_seed():
+    from apps.universities.models import MedicalUniversity
+
+    university, _ = MedicalUniversity.objects.get_or_create(
+        name=PEDIATRIC_NAME,
+        defaults={"api_config": PEDIATRIC_API_CONFIG},
+    )
+    _ensure_university_directions(university, PEDIATRIC_API_CONFIG, PEDIATRIC_DIRECTIONS)
+
+
+def ensure_seed_data():
+    ensure_first_med_seed()
+    ensure_pediatric_seed()
