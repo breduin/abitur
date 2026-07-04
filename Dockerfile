@@ -16,4 +16,4 @@ COPY . .
 
 RUN chmod +x /app/entrypoint-web.sh /app/entrypoint-worker.sh
 
-ENTRYPOINT ["/app/entrypoint-web.sh"]
+ENTRYPOINT ["/bin/bash", "/app/entrypoint-web.sh"]
