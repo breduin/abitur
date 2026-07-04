@@ -3,7 +3,7 @@ services:
     build: .
     command: gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 2
     ports:
-      - "8000:8000"
+      - "${APP_PORT}:8000"
     volumes:
       - .:/app
       - ./apps/users/migrations:/app/apps/users/migrations
