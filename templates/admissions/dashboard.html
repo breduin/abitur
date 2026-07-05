@@ -32,11 +32,11 @@
                 <tr>
                     <th>Медицинский университет</th>
                     <th>Направление</th>
+                    <th>Количество мест</th>
                     <th>Позиция</th>
                     <th>Баллы</th>
                     <th>Статус</th>
                     <th>Приоритет</th>
-                    <th>Согласие</th>
                     <th>Тип</th>
                 </tr>
             </thead>
@@ -45,15 +45,11 @@
                 <tr>
                     <td>{{ row.university_name }}</td>
                     <td>{{ row.direction_name }}</td>
+                    <td>{% if row.seats is not None %}{{ row.seats }}{% else %}—{% endif %}</td>
                     <td>{% if row.position %}{{ row.position }}{% else %}—{% endif %}</td>
                     <td>{% if row.nsummark %}{{ row.nsummark }}{% else %}—{% endif %}</td>
                     <td>{{ row.sstatus_ssp|default:"—" }}</td>
                     <td>{% if row.npriority_ssp is not None %}{{ row.npriority_ssp }}{% else %}—{% endif %}</td>
-                    <td>
-                        {% if row.has_enrollment_consent is None %}—
-                        {% elif row.has_enrollment_consent %}Да
-                        {% else %}Нет{% endif %}
-                    </td>
                     <td>
                         {% if row.is_hypothetical %}
                             <span class="badge bg-secondary">Оценка</span>
@@ -80,9 +76,9 @@
                 <tr>
                     <th>Медицинский университет</th>
                     <th>Направление</th>
+                    <th>Количество мест</th>
                     <th>Прогнозная позиция</th>
-                    <th>Баллы</th>
-                    <th>Тип</th>
+                    <th class="text-center">Уровень</th>
                 </tr>
             </thead>
             <tbody>
@@ -90,13 +86,17 @@
                 <tr>
                     <td>{{ row.university_name }}</td>
                     <td>{{ row.direction_name }}</td>
+                    <td>{% if row.seats is not None %}{{ row.seats }}{% else %}—{% endif %}</td>
                     <td>{% if row.position %}{{ row.position }}{% else %}—{% endif %}</td>
-                    <td>{% if row.nsummark %}{{ row.nsummark }}{% else %}—{% endif %}</td>
-                    <td>
-                        {% if row.is_hypothetical %}
-                            <span class="badge bg-secondary">Оценка</span>
+                    <td class="text-center">
+                        {% if row.position and row.seats is not None %}
+                            {% if row.position <= row.seats %}
+                                <span class="level-dot level-dot--good" title="Прогноз в пределах мест"></span>
+                            {% else %}
+                                <span class="level-dot level-dot--warning" title="Прогноз за пределами мест"></span>
+                            {% endif %}
                         {% else %}
-                            <span class="badge bg-success">Факт</span>
+                            —
                         {% endif %}
                     </td>
                 </tr>

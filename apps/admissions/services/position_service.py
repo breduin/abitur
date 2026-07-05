@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 
 from apps.admissions.models import ApplicantProfile
-from apps.universities.formatting import format_direction_label
 from apps.universities.models import MedicalUniversity, StudyDirection
 
 
@@ -10,6 +9,7 @@ class PositionResult:
     university_name: str
     direction_name: str
     direction_id: int
+    seats: int | None
     position: int | None
     nsummark: int | None
     sstatus_ssp: str | None
@@ -48,7 +48,7 @@ class PositionService:
         return self.NOT_FOUND_STATUS.format(abiturient_id=self.user.abiturient_id)
 
     def _direction_label(self, direction: StudyDirection) -> str:
-        return format_direction_label(direction.name, direction.seats)
+        return direction.name
 
     def _user_score_for_university(self, university: MedicalUniversity) -> int | None:
         if self.user.ege_total_score is None:
@@ -102,6 +102,7 @@ class PositionService:
                         university_name=university.name,
                         direction_name=self._direction_label(direction),
                         direction_id=direction.id,
+                        seats=direction.seats,
                         position=profile.position,
                         nsummark=profile.nsummark,
                         sstatus_ssp=profile.sstatus_ssp,
@@ -124,6 +125,7 @@ class PositionService:
                         university_name=university.name,
                         direction_name=self._direction_label(direction),
                         direction_id=direction.id,
+                        seats=direction.seats,
                         position=position,
                         nsummark=fields["nsummark"],
                         sstatus_ssp=fields["sstatus_ssp"],
@@ -142,6 +144,7 @@ class PositionService:
                         university_name=university.name,
                         direction_name=self._direction_label(direction),
                         direction_id=direction.id,
+                        seats=direction.seats,
                         position=self._hypothetical_position(direction, user_score)
                         if user_score is not None
                         else None,
@@ -161,6 +164,7 @@ class PositionService:
                     university_name=university.name,
                     direction_name=self._direction_label(direction),
                     direction_id=direction.id,
+                    seats=direction.seats,
                     position=self._hypothetical_position(direction, user_score)
                     if user_score is not None
                     else None,
@@ -198,6 +202,7 @@ class PositionService:
                         university_name=university.name,
                         direction_name=self._direction_label(direction),
                         direction_id=direction.id,
+                        seats=direction.seats,
                         position=None,
                         nsummark=None,
                         sstatus_ssp=None,
@@ -223,6 +228,7 @@ class PositionService:
                     university_name=university.name,
                     direction_name=self._direction_label(direction),
                     direction_id=direction.id,
+                    seats=direction.seats,
                     position=higher_count + 1,
                     nsummark=user_score,
                     sstatus_ssp="Прогноз (priority=1)",
