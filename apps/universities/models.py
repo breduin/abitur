@@ -4,7 +4,17 @@ from apps.universities.formatting import format_direction_label
 
 
 class MedicalUniversity(models.Model):
+    class City(models.TextChoices):
+        SPB = "spb", "Санкт-Петербург"
+        MSK = "msk", "Москва"
+
     name = models.CharField("Название", max_length=255)
+    city = models.CharField(
+        "Город",
+        max_length=8,
+        choices=City.choices,
+        blank=True,
+    )
     api_config = models.JSONField("Конфиг API", default=dict, blank=True)
     is_active = models.BooleanField("Активен", default=True)
     honors_diploma_points = models.PositiveSmallIntegerField(

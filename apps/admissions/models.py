@@ -62,3 +62,16 @@ class SyncJob(models.Model):
 
     def __str__(self):
         return f"Sync {self.direction} [{self.status}]"
+
+
+class AnalyticsSnapshot(models.Model):
+    computed_at = models.DateTimeField("Рассчитано", auto_now_add=True)
+    payload = models.JSONField("Данные")
+
+    class Meta:
+        verbose_name = "Снимок аналитики"
+        verbose_name_plural = "Снимки аналитики"
+        ordering = ["-computed_at"]
+
+    def __str__(self):
+        return f"Аналитика {self.computed_at:%d.%m.%Y %H:%M}"

@@ -5,7 +5,14 @@ from django.shortcuts import redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 
-from apps.admissions.models import SyncJob
+from apps.admissions.models import AnalyticsSnapshot, ApplicantProfile, SyncJob
+from apps.admissions.services.analytics_service import (
+    GROUP_LABELS,
+    GROUP_MUSCOVITES,
+    GROUP_PETERSBURGHERS,
+    GROUP_VISITORS,
+    save_analytics_snapshot,
+)
 from apps.admissions.services.position_service import PositionService
 from apps.admissions.tasks import sync_all_active_universities
 from apps.universities.models import MedicalUniversity
@@ -65,3 +72,22 @@ def refresh_status_partial(request):
             is_active=True,
         ).exclude(sync_warning=""),
     })
+
+
+@login_required
+def analytics_view(request):
+    snapshot = AnalyticsSnapshot.objects.order_by("-computed_at").first()
+    if snapshot is None and ApplicantProfile.objects.exists():
+        save_analytics_snapshot()
+        snapshot = AnalyticsSnapshot.objects.order_by("-computed_at").first()
+
+    return render(
+        request,
+        "admissions/analytics.html",
+        {
+            "analytics": snapshot.payload if snapshot else None,
+            "computed_at": snapshot.computed_at if snapshot else None,
+            "group_labels": GROUP_LABELS,
+            "last_data_update": _get_last_data_update(),
+        },
+    )

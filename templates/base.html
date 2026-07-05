@@ -39,6 +39,7 @@
             {% if user.is_authenticated %}
             <div class="navbar-nav ms-auto align-items-center flex-row gap-3">
                 <a class="nav-link px-2" href="{% url 'dashboard' %}">Главная</a>
+                <a class="nav-link px-2" href="{% url 'analytics' %}">Аналитика</a>
                 <a class="nav-link px-2" href="{% url 'cabinet' %}">Личный кабинет</a>
                 <form method="post" action="{% url 'logout' %}" class="d-inline">
                     {% csrf_token %}

@@ -86,6 +86,7 @@ class SeedTests(TestCase):
 
         msu = MedicalUniversity.objects.get(name=MSU_NAME)
         self.assertEqual(msu.api_config.get("provider"), "cpk_msu")
+        self.assertEqual(msu.city, "msk")
         self.assertEqual(msu.honors_diploma_points, 0)
         lech = msu.directions.get(name="Лечебное дело")
         self.assertEqual(lech.seats, 46)
@@ -98,6 +99,7 @@ class SeedTests(TestCase):
 
         spbu = MedicalUniversity.objects.get(name=SPBU_NAME)
         self.assertEqual(spbu.api_config.get("provider"), "spbu")
+        self.assertEqual(spbu.city, "spb")
         lech = spbu.directions.get(name="Лечебное дело")
         self.assertEqual(lech.seats, 21)
         self.assertEqual(

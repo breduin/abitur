@@ -19,6 +19,12 @@ from apps.admissions.clients.gpmu_client import GPMUClient
 from apps.admissions.clients.parsed import ParsedApplicantRow
 from apps.admissions.clients.university_client import UniversityAPIClient
 from apps.admissions.models import ApplicantProfile, SyncJob
+from apps.admissions.services.analytics_service import (
+    GROUP_MUSCOVITES,
+    GROUP_PETERSBURGHERS,
+    GROUP_VISITORS,
+    save_analytics_snapshot,
+)
 from apps.admissions.services.position_service import PositionService
 from apps.admissions.services.sync_service import should_skip_sync, sync_direction
 from apps.universities.models import MedicalUniversity, StudyDirection
@@ -844,6 +850,100 @@ class SPBUClientTests(SimpleTestCase):
         self.assertEqual(rows[0]["Уникальный код поступающего"], "1000001")
         self.assertEqual(rows[1]["Уникальный код поступающего"], "1000002")
         self.assertEqual(client.last_seats, 21)
+
+
+class AnalyticsServiceTests(TestCase):
+    def setUp(self):
+        self.spb_uni = MedicalUniversity.objects.create(
+            name="SPB Test",
+            city=MedicalUniversity.City.SPB,
+        )
+        self.msk_uni = MedicalUniversity.objects.create(
+            name="MSK Test",
+            city=MedicalUniversity.City.MSK,
+        )
+        self.spb_direction = StudyDirection.objects.create(
+            university=self.spb_uni,
+            name="Лечебное дело",
+            filter_params={},
+            seats=10,
+        )
+        self.msk_direction = StudyDirection.objects.create(
+            university=self.msk_uni,
+            name="Лечебное дело",
+            filter_params={},
+            seats=20,
+        )
+        SyncJob.objects.create(direction=self.spb_direction, records_fetched=100)
+        SyncJob.objects.create(direction=self.msk_direction, records_fetched=200)
+
+    def test_compute_groups(self):
+        ApplicantProfile.objects.create(
+            direction=self.spb_direction,
+            abiturient_id="1001",
+            position=1,
+            sstatus_ssp="Участвует",
+            nsummark=300,
+            npriority_ssp=1,
+        )
+        ApplicantProfile.objects.create(
+            direction=self.msk_direction,
+            abiturient_id="1002",
+            position=1,
+            sstatus_ssp="Участвует",
+            nsummark=290,
+            npriority_ssp=1,
+        )
+        ApplicantProfile.objects.create(
+            direction=self.spb_direction,
+            abiturient_id="1003",
+            position=2,
+            sstatus_ssp="Участвует",
+            nsummark=280,
+            npriority_ssp=1,
+        )
+        ApplicantProfile.objects.create(
+            direction=self.msk_direction,
+            abiturient_id="1003",
+            position=2,
+            sstatus_ssp="Участвует",
+            nsummark=280,
+            npriority_ssp=1,
+        )
+
+        payload = save_analytics_snapshot()
+        overall = payload["overall"]
+        self.assertEqual(overall["total"], 3)
+        self.assertEqual(overall[GROUP_PETERSBURGHERS]["count"], 1)
+        self.assertEqual(overall[GROUP_MUSCOVITES]["count"], 1)
+        self.assertEqual(overall[GROUP_VISITORS]["count"], 1)
+
+        spb_row = next(row for row in payload["directions"] if row["city"] == "spb")
+        msk_row = next(row for row in payload["directions"] if row["city"] == "msk")
+        self.assertEqual(spb_row["applications_count"], 100)
+        self.assertEqual(msk_row["applications_count"], 200)
+
+        spb_groups = {item["key"]: item for item in spb_row["groups"]}
+        self.assertIn(GROUP_PETERSBURGHERS, spb_groups)
+        self.assertIn(GROUP_VISITORS, spb_groups)
+        self.assertNotIn(GROUP_MUSCOVITES, spb_groups)
+        self.assertEqual(spb_groups[GROUP_PETERSBURGHERS]["count"], 1)
+        self.assertEqual(spb_groups[GROUP_VISITORS]["count"], 1)
+
+        msk_groups = {item["key"]: item for item in msk_row["groups"]}
+        self.assertIn(GROUP_MUSCOVITES, msk_groups)
+        self.assertIn(GROUP_VISITORS, msk_groups)
+        self.assertNotIn(GROUP_PETERSBURGHERS, msk_groups)
+
+    def test_analytics_page_requires_login(self):
+        response = self.client.get("/analytics/")
+        self.assertEqual(response.status_code, 302)
+
+    def test_analytics_page_for_verified_user(self):
+        User.objects.create_user(abiturient_id="777", is_verified=True)
+        self.client.post("/login/", {"abiturient_id": "777"})
+        response = self.client.get("/analytics/")
+        self.assertEqual(response.status_code, 200)
 
 
 class AuthTests(TestCase):

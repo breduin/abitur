@@ -82,12 +82,18 @@ ALMAZOV_DIRECTIONS = [
 ]
 
 
-def _ensure_university_directions(university, api_config, directions):
+def _ensure_university_directions(university, api_config, directions, *, city=None):
     from apps.universities.models import MedicalUniversity, StudyDirection
 
+    university_updates = {}
     if not university.api_config:
-        university.api_config = api_config
-        university.save(update_fields=["api_config"])
+        university_updates["api_config"] = api_config
+    if city and university.city != city:
+        university_updates["city"] = city
+    if university_updates:
+        for field, value in university_updates.items():
+            setattr(university, field, value)
+        university.save(update_fields=list(university_updates.keys()))
 
     for direction_data in directions:
         direction, created = StudyDirection.objects.get_or_create(
@@ -116,7 +122,9 @@ def ensure_first_med_seed():
         name=FIRST_MED_NAME,
         defaults={"api_config": FIRST_MED_API_CONFIG},
     )
-    _ensure_university_directions(university, FIRST_MED_API_CONFIG, FIRST_MED_DIRECTIONS)
+    _ensure_university_directions(
+        university, FIRST_MED_API_CONFIG, FIRST_MED_DIRECTIONS, city="spb"
+    )
 
 
 def ensure_pediatric_seed():
@@ -126,7 +134,9 @@ def ensure_pediatric_seed():
         name=PEDIATRIC_NAME,
         defaults={"api_config": PEDIATRIC_API_CONFIG},
     )
-    _ensure_university_directions(university, PEDIATRIC_API_CONFIG, PEDIATRIC_DIRECTIONS)
+    _ensure_university_directions(
+        university, PEDIATRIC_API_CONFIG, PEDIATRIC_DIRECTIONS, city="spb"
+    )
 
 
 SZGMU_API_CONFIG = {
@@ -153,7 +163,9 @@ def ensure_almazov_seed():
         name=ALMAZOV_NAME,
         defaults={"api_config": ALMAZOV_API_CONFIG},
     )
-    _ensure_university_directions(university, ALMAZOV_API_CONFIG, ALMAZOV_DIRECTIONS)
+    _ensure_university_directions(
+        university, ALMAZOV_API_CONFIG, ALMAZOV_DIRECTIONS, city="spb"
+    )
 
 
 SECHENOV_API_CONFIG = {
@@ -190,7 +202,7 @@ def ensure_szgmu_seed():
         name=SZGMU_NAME,
         defaults={"api_config": SZGMU_API_CONFIG},
     )
-    _ensure_university_directions(university, SZGMU_API_CONFIG, SZGMU_DIRECTIONS)
+    _ensure_university_directions(university, SZGMU_API_CONFIG, SZGMU_DIRECTIONS, city="spb")
 
 
 def ensure_sechenov_seed():
@@ -200,7 +212,9 @@ def ensure_sechenov_seed():
         name=SECHENOV_NAME,
         defaults={"api_config": SECHENOV_API_CONFIG},
     )
-    _ensure_university_directions(university, SECHENOV_API_CONFIG, SECHENOV_DIRECTIONS)
+    _ensure_university_directions(
+        university, SECHENOV_API_CONFIG, SECHENOV_DIRECTIONS, city="msk"
+    )
 
 
 PIROGOV_API_CONFIG = {
@@ -238,7 +252,9 @@ def ensure_pirogov_seed():
         name=PIROGOV_NAME,
         defaults={"api_config": PIROGOV_API_CONFIG},
     )
-    _ensure_university_directions(university, PIROGOV_API_CONFIG, PIROGOV_DIRECTIONS)
+    _ensure_university_directions(
+        university, PIROGOV_API_CONFIG, PIROGOV_DIRECTIONS, city="msk"
+    )
 
 
 MSU_API_CONFIG = {
@@ -271,7 +287,7 @@ def ensure_msu_seed():
     if university.honors_diploma_points != 0:
         university.honors_diploma_points = 0
         university.save(update_fields=["honors_diploma_points"])
-    _ensure_university_directions(university, MSU_API_CONFIG, MSU_DIRECTIONS)
+    _ensure_university_directions(university, MSU_API_CONFIG, MSU_DIRECTIONS, city="msk")
 
 
 SPBU_API_CONFIG = {
@@ -325,7 +341,7 @@ def ensure_spbu_seed():
         name=SPBU_NAME,
         defaults={"api_config": SPBU_API_CONFIG},
     )
-    _ensure_university_directions(university, SPBU_API_CONFIG, SPBU_DIRECTIONS)
+    _ensure_university_directions(university, SPBU_API_CONFIG, SPBU_DIRECTIONS, city="spb")
 
 
 def ensure_seed_data():

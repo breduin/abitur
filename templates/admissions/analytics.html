@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+
+{% block title %}Аналитика — Абитуриент{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+    <h1 class="h3 mb-0">Аналитика</h1>
+    {% if computed_at %}
+    <p class="text-muted mb-0 small">
+        Рассчитано: {{ computed_at|date:"d.m.Y H:i" }}
+    </p>
+    {% endif %}
+</div>
+
+{% if not analytics %}
+<div class="alert alert-info">
+    Данные для аналитики ещё не загружены. Нажмите «Обновить данные сейчас» на главной странице.
+</div>
+{% else %}
+
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-primary-custom text-white">
+        <h2 class="h5 mb-0">Сводка по группам абитуриентов</h2>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>Группа</th>
+                    <th>Количество</th>
+                    <th>Доля</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>{{ group_labels.petersburgers }}</td>
+                    <td>{{ analytics.overall.petersburgers.count }}</td>
+                    <td>{{ analytics.overall.petersburgers.percent }}%</td>
+                </tr>
+                <tr>
+                    <td>{{ group_labels.muscovites }}</td>
+                    <td>{{ analytics.overall.muscovites.count }}</td>
+                    <td>{{ analytics.overall.muscovites.percent }}%</td>
+                </tr>
+                <tr>
+                    <td>{{ group_labels.visitors }}</td>
+                    <td>{{ analytics.overall.visitors.count }}</td>
+                    <td>{{ analytics.overall.visitors.percent }}%</td>
+                </tr>
+                <tr class="table-light fw-semibold">
+                    <td>Всего уникальных абитуриентов</td>
+                    <td colspan="2">{{ analytics.overall.total }}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    <div class="card-body border-top py-2">
+        <p class="text-muted small mb-0">
+            <strong>Петербуржцы</strong> — подали только в вузы СПб.
+            <strong>Москвичи</strong> — только в московские.
+            <strong>Приезжие</strong> — есть заявки и в СПб, и в Москве.
+        </p>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-primary-custom text-white">
+        <h2 class="h5 mb-0">Направления: места и заявления</h2>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>Медицинский университет</th>
+                    <th>Направление</th>
+                    <th>Количество мест</th>
+                    <th>Подано заявлений</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in analytics.directions %}
+                <tr>
+                    <td>{{ row.university_name }}</td>
+                    <td>{{ row.direction_name }}</td>
+                    <td>{% if row.seats is not None %}{{ row.seats }}{% else %}—{% endif %}</td>
+                    <td>{% if row.applications_count is not None %}{{ row.applications_count }}{% else %}—{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-header bg-accent text-white">
+        <h2 class="h5 mb-0">Группы по университетам и направлениям</h2>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>Медицинский университет</th>
+                    <th>Направление</th>
+                    <th>Абитуриентов в списке</th>
+                    <th>Группа</th>
+                    <th>Количество</th>
+                    <th>Доля в направлении</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in analytics.directions %}
+                    {% for group in row.groups %}
+                    <tr>
+                        {% if forloop.first %}
+                        <td rowspan="{{ row.groups|length }}">{{ row.university_name }}</td>
+                        <td rowspan="{{ row.groups|length }}">{{ row.direction_name }}</td>
+                        <td rowspan="{{ row.groups|length }}">{{ row.direction_total }}</td>
+                        {% endif %}
+                        <td>{{ group.label }}</td>
+                        <td>{{ group.count }}</td>
+                        <td>{{ group.percent }}%</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td>{{ row.university_name }}</td>
+                        <td>{{ row.direction_name }}</td>
+                        <td>{{ row.direction_total }}</td>
+                        <td colspan="3" class="text-muted">—</td>
+                    </tr>
+                    {% endfor %}
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% endif %}
+
+<p class="text-muted text-end mt-3 mb-0 small">
+    {% if last_data_update %}
+        Последнее обновление данных: {{ last_data_update|date:"d.m.Y H:i" }}
+    {% else %}
+        Данные ещё не обновлялись
+    {% endif %}
+</p>
+{% endblock %}
