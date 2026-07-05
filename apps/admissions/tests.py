@@ -182,7 +182,7 @@ class PositionServiceTests(TestCase):
         self.assertEqual(forecast[0].position, 3)
         self.assertFalse(forecast[0].is_hypothetical)
 
-    def test_applied_without_profile_shows_estimate(self):
+    def test_applied_without_profile_shows_not_found_when_list_loaded(self):
         user = User.objects.create_user(
             abiturient_id="9999999",
             is_verified=True,
@@ -199,7 +199,21 @@ class PositionServiceTests(TestCase):
         self.assertIn("9999999", current.sstatus_ssp)
         self.assertTrue(forecast.is_hypothetical)
 
+    def test_applied_without_profile_shows_not_synced_when_list_empty(self):
+        ApplicantProfile.objects.all().delete()
+        user = User.objects.create_user(
+            abiturient_id="1191858",
+            is_verified=True,
+            ege_total_score=290,
+            has_honors_diploma=True,
+        )
+        user.applied_universities.add(self.university)
 
+        service = PositionService(user)
+        current = service.get_current_positions()[0]
+
+        self.assertTrue(current.is_hypothetical)
+        self.assertIn("ещё не загружены", current.sstatus_ssp)
     def test_profile_status_when_not_applied_but_in_list(self):
         user = User.objects.create_user(
             abiturient_id="2000001",

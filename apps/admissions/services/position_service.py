@@ -25,6 +25,10 @@ class PositionService:
         "ID {abiturient_id} не найден в списке. "
         "Войдите под тем же ID, что указан в списке поступающих."
     )
+    NOT_SYNCED_STATUS = (
+        "Данные по направлению ещё не загружены. "
+        "Нажмите «Обновить данные сейчас» и подождите несколько минут."
+    )
 
     def __init__(self, user):
         self.user = user
@@ -34,6 +38,14 @@ class PositionService:
             direction=direction,
             abiturient_id=self.user.abiturient_id,
         ).first()
+
+    def _direction_has_profiles(self, direction: StudyDirection) -> bool:
+        return ApplicantProfile.objects.filter(direction=direction).exists()
+
+    def _not_found_status(self, direction: StudyDirection) -> str:
+        if not self._direction_has_profiles(direction):
+            return self.NOT_SYNCED_STATUS
+        return self.NOT_FOUND_STATUS.format(abiturient_id=self.user.abiturient_id)
 
     def _direction_label(self, direction: StudyDirection) -> str:
         return format_direction_label(direction.name, direction.seats)
@@ -134,9 +146,7 @@ class PositionService:
                         if user_score is not None
                         else None,
                         nsummark=user_score,
-                        sstatus_ssp=self.NOT_FOUND_STATUS.format(
-                            abiturient_id=self.user.abiturient_id
-                        ),
+                        sstatus_ssp=self._not_found_status(direction),
                         npriority_ssp=None,
                         has_enrollment_consent=None,
                         is_applied=True,
