@@ -114,7 +114,9 @@
     </div>
     <div class="card-body pb-2">
         <p class="text-muted small mb-0">
-            Позиция в списке на зачисление по направлениям, куда вы подали заявления.
+            Прогноз по моделированию согласий: в конкурсный список вуза попадают только абитуриенты,
+            которые по модели подают согласие в этот вуз (одно согласие на одного человека).
+            Позиция указана для списка на зачисление, конкурсного списка или исходного списка заявлений.
         </p>
     </div>
     <div class="table-responsive">
@@ -127,6 +129,7 @@
                     <th>Приоритет</th>
                     <th>Баллы</th>
                     <th>Позиция</th>
+                    <th>Тип позиции</th>
                     <th>Проходной</th>
                     <th>Статус</th>
                 </tr>
@@ -140,19 +143,24 @@
                     <td>{% if row.npriority_ssp is not None %}{{ row.npriority_ssp }}{% else %}—{% endif %}</td>
                     <td>{% if row.nsummark is not None %}{{ row.nsummark }}{% else %}—{% endif %}</td>
                     <td>{% if row.position %}{{ row.position }}{% else %}—{% endif %}</td>
+                    <td class="text-muted small">{% if row.position_label %}{{ row.position_label }}{% else %}—{% endif %}</td>
                     <td>{% if row.cutoff_score is not None %}{{ row.cutoff_score }}{% else %}—{% endif %}</td>
                     <td>
-                        {% if row.is_admitted %}
-                            <span class="badge bg-success">Проходит</span>
-                        {% elif row.position %}
-                            <span class="badge bg-warning text-dark">Не проходит</span>
+                        {% if row.status == "admitted" %}
+                            <span class="badge bg-success">{{ row.status_label }}</span>
+                        {% elif row.status == "admitted_other_direction" %}
+                            <span class="badge bg-info text-dark">{{ row.status_label }}</span>
+                        {% elif row.status == "consent_other_university" %}
+                            <span class="badge bg-secondary">{{ row.status_label }}</span>
+                        {% elif row.status == "not_admitted" %}
+                            <span class="badge bg-warning text-dark">{{ row.status_label }}</span>
                         {% else %}
-                            <span class="badge bg-secondary">Нет в списке</span>
+                            <span class="badge bg-secondary">{{ row.status_label }}</span>
                         {% endif %}
                     </td>
                 </tr>
                 {% empty %}
-                <tr><td colspan="8" class="text-muted">Нет поданных заявлений или данных моделирования.</td></tr>
+                <tr><td colspan="9" class="text-muted">Нет поданных заявлений или данных моделирования.</td></tr>
                 {% endfor %}
             </tbody>
         </table>

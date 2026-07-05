@@ -52,12 +52,36 @@ class ConsentProjectionResult:
     direction_name: str
     direction_id: int
     seats: int | None
-    position: int | None
+    submission_position: int | None
+    competitive_position: int | None
+    enrollment_position: int | None
     nsummark: int | None
     npriority_ssp: int | None
     cutoff_score: int | None
     is_admitted: bool
     is_applied: bool
+    status: str
+    status_label: str
+    consent_university_name: str | None = None
+    enrolled_direction_name: str | None = None
+
+    @property
+    def position(self) -> int | None:
+        if self.enrollment_position is not None:
+            return self.enrollment_position
+        if self.competitive_position is not None:
+            return self.competitive_position
+        return self.submission_position
+
+    @property
+    def position_label(self) -> str:
+        if self.enrollment_position is not None:
+            return "зачисление"
+        if self.competitive_position is not None:
+            return "конкурсный"
+        if self.submission_position is not None:
+            return "поданные заявления"
+        return ""
 
 
 def _is_olympiad(profile: ApplicantProfile) -> bool:
@@ -372,22 +396,38 @@ def get_user_consent_projection(
     applied_ids = set(user.applied_universities.values_list("id", flat=True))
     enrollment_by_direction = consent_modeling.get("enrollment_by_direction") or {}
     competitive_by_direction = consent_modeling.get("competitive_by_direction") or {}
+    consent_by_abiturient = consent_modeling.get("consent_by_abiturient") or {}
     cutoff_by_direction = {
         item["direction_id"]: item.get("cutoff_score")
         for item in consent_modeling.get("cutoff_scores") or []
     }
 
-    directions = (
+    universities = {
+        university.id: university.name
+        for university in MedicalUniversity.objects.filter(is_active=True)
+    }
+    user_consent_university_id = consent_by_abiturient.get(user.abiturient_id)
+    user_consent_university_name = universities.get(user_consent_university_id)
+
+    directions = list(
         StudyDirection.objects.filter(university__is_active=True)
         .select_related("university")
         .order_by("university__name", "name")
     )
+    directions_by_university: dict[int, list[StudyDirection]] = defaultdict(list)
+    for direction in directions:
+        directions_by_university[direction.university_id].append(direction)
+
+    enrolled_direction_name_by_university: dict[int, str] = {}
+    for direction in directions:
+        enrolled_ids = enrollment_by_direction.get(str(direction.id), [])
+        if user.abiturient_id in enrolled_ids:
+            enrolled_direction_name_by_university[direction.university_id] = direction.name
 
     results: list[ConsentProjectionResult] = []
     for direction in directions:
         university = direction.university
-        is_applied = university.id in applied_ids
-        if not is_applied:
+        if university.id not in applied_ids:
             continue
 
         profile = ApplicantProfile.objects.filter(
@@ -396,12 +436,40 @@ def get_user_consent_projection(
         ).first()
 
         direction_key = str(direction.id)
-        enrolled_ids = enrollment_by_direction.get(direction_key, [])
-        competitive_ids = competitive_by_direction.get(direction_key, [])
-
-        enrolled_position = _find_rank(user.abiturient_id, enrolled_ids)
-        competitive_position = _find_rank(user.abiturient_id, competitive_ids)
+        enrolled_position = _find_rank(
+            user.abiturient_id,
+            enrollment_by_direction.get(direction_key, []),
+        )
+        competitive_position = _find_rank(
+            user.abiturient_id,
+            competitive_by_direction.get(direction_key, []),
+        )
+        submission_position = profile.position if profile else None
         is_admitted = enrolled_position is not None
+        enrolled_elsewhere_name = enrolled_direction_name_by_university.get(university.id)
+
+        if is_admitted:
+            status = "admitted"
+            status_label = "Проходит"
+        elif (
+            enrolled_elsewhere_name
+            and enrolled_elsewhere_name != direction.name
+            and university.id == user_consent_university_id
+        ):
+            status = "admitted_other_direction"
+            status_label = f"Зачисление: {enrolled_elsewhere_name}"
+        elif profile and user_consent_university_id != university.id:
+            status = "consent_other_university"
+            status_label = f"Согласие в {user_consent_university_name or 'другом вузе'}"
+        elif competitive_position is not None:
+            status = "not_admitted"
+            status_label = "Не проходит"
+        elif profile:
+            status = "not_in_competitive"
+            status_label = "Вне конкурсного списка"
+        else:
+            status = "not_in_submission"
+            status_label = "Нет в списке поступающих"
 
         results.append(
             ConsentProjectionResult(
@@ -409,12 +477,18 @@ def get_user_consent_projection(
                 direction_name=direction.name,
                 direction_id=direction.id,
                 seats=direction.seats,
-                position=enrolled_position or competitive_position,
+                submission_position=submission_position,
+                competitive_position=competitive_position,
+                enrollment_position=enrolled_position,
                 nsummark=profile.nsummark if profile else None,
                 npriority_ssp=profile.npriority_ssp if profile else None,
                 cutoff_score=cutoff_by_direction.get(direction.id),
                 is_admitted=is_admitted,
                 is_applied=True,
+                status=status,
+                status_label=status_label,
+                consent_university_name=user_consent_university_name,
+                enrolled_direction_name=enrolled_elsewhere_name,
             )
         )
 
