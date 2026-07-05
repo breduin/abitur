@@ -3,8 +3,11 @@ from email.utils import parsedate_to_datetime
 from typing import Any
 
 import requests
+import urllib3
 from django.conf import settings
 from django.utils import timezone
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 class UniversityAPIError(Exception):
