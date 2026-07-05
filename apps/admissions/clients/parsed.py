@@ -9,6 +9,7 @@ from apps.admissions.clients.field_parsers import (
     parse_gpmu_enrollment_consent,
     parse_priority,
     parse_rsmu_enrollment_consent,
+    parse_spbu_enrollment_consent,
     parse_sechenov_enrollment_consent,
     parse_szgmu_enrollment_consent,
 )
@@ -135,6 +136,31 @@ class ParsedApplicantRow:
             nsummark=nsummark,
             npriority_ssp=parse_priority(row.get("Приоритет")),
             has_enrollment_consent=parse_cpk_msu_enrollment_consent(row),
+            raw_data=row,
+        )
+
+    @classmethod
+    def from_spbu_row(cls, row: dict[str, Any], position: int) -> "ParsedApplicantRow | None":
+        abiturient_id = str(row.get("Уникальный код поступающего", "")).strip()
+        if not abiturient_id:
+            return None
+
+        score_raw = str(row.get("Сумма конкурсных баллов", "")).strip()
+        if score_raw.isdigit():
+            nsummark = int(score_raw)
+        else:
+            nsummark = 0
+
+        status = str(row.get("Статус", "")).strip() or "На рассмотрении"
+        priority_key = "Приоритет зачисления, указанный поступающим по данной КГ"
+
+        return cls(
+            abiturient_id=abiturient_id,
+            position=position,
+            sstatus_ssp=status,
+            nsummark=nsummark,
+            npriority_ssp=parse_priority(row.get(priority_key)),
+            has_enrollment_consent=parse_spbu_enrollment_consent(row),
             raw_data=row,
         )
 

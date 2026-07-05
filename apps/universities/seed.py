@@ -5,6 +5,7 @@ SZGMU_NAME = "СЗГМУ Мечникова (СПб)"
 SECHENOV_NAME = "Сеченовский университет (Мск)"
 PIROGOV_NAME = "Пироговский университет (Мск)"
 MSU_NAME = "МГУ Ломоносова (Мск)"
+SPBU_NAME = "СПбГУ (СПб)"
 
 FIRST_MED_API_CONFIG = {
     "provider": "1spbgmu",
@@ -272,6 +273,60 @@ def ensure_msu_seed():
     _ensure_university_directions(university, MSU_API_CONFIG, MSU_DIRECTIONS)
 
 
+SPBU_API_CONFIG = {
+    "provider": "spbu",
+    "base_url": "https://enrollelists.spbu.ru",
+    "list_endpoint": "/api/reports/priem-list-02/data",
+    "referer": (
+        "https://enrollelists.spbu.ru/reports/PriemList02.php?mode=list"
+        "&education_level_sort_order=1"
+        "&speciality=31.05.01%7C%D0%9B%D0%B5%D1%87%D0%B5%D0%B1%D0%BD%D0%BE%D0%B5+%D0%B4%D0%B5%D0%BB%D0%BE"
+        "&program_name=%D0%9B%D0%B5%D1%87%D0%B5%D0%B1%D0%BD%D0%BE%D0%B5+%D0%B4%D0%B5%D0%BB%D0%BE"
+        "&education_form_name=%D0%BE%D1%87%D0%BD%D0%B0%D1%8F"
+        "&fin_source_name=%D0%91%D1%8E%D0%B4%D0%B6%D0%B5%D1%82"
+        "&faculty_name=%D0%A1%D0%9F%D0%B1%D0%93%D0%A3&is_foreign=0"
+    ),
+    "verify_ssl": False,
+}
+
+SPBU_DIRECTIONS = [
+    {
+        "name": "Лечебное дело",
+        "seats": 21,
+        "filter_params": {
+            "report_priem_list_02_id": "019f329a-c2d0-7107-8eea-e92731eaf3d1",
+            "speciality_ids": ["7dd29c4f-9a88-47e3-afa8-571940bf95fa"],
+            "filters": {
+                "education_level_sort_order": "1",
+                "report_upload_id": "",
+                "faculty_name": "СПбГУ",
+                "program_name": "Лечебное дело",
+                "speciality": "31.05.01|Лечебное дело",
+                "applicant_code": "",
+                "education_form_name": "очная",
+                "fin_source_name": "Бюджет",
+                "contract_status": "",
+                "consent_status": "",
+                "priority": "",
+                "status": "",
+                "is_foreign": "0",
+            },
+            "seats": 21,
+        },
+    },
+]
+
+
+def ensure_spbu_seed():
+    from apps.universities.models import MedicalUniversity
+
+    university, _ = MedicalUniversity.objects.get_or_create(
+        name=SPBU_NAME,
+        defaults={"api_config": SPBU_API_CONFIG},
+    )
+    _ensure_university_directions(university, SPBU_API_CONFIG, SPBU_DIRECTIONS)
+
+
 def ensure_seed_data():
     ensure_first_med_seed()
     ensure_pediatric_seed()
@@ -280,3 +335,4 @@ def ensure_seed_data():
     ensure_sechenov_seed()
     ensure_pirogov_seed()
     ensure_msu_seed()
+    ensure_spbu_seed()

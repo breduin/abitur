@@ -8,6 +8,7 @@ from apps.universities.seed import (
     MSU_NAME,
     PIROGOV_NAME,
     SECHENOV_NAME,
+    SPBU_NAME,
     SZGMU_NAME,
     ensure_seed_data,
 )
@@ -25,7 +26,8 @@ class SeedTests(TestCase):
         self.assertEqual(MedicalUniversity.objects.filter(name=SECHENOV_NAME).count(), 1)
         self.assertEqual(MedicalUniversity.objects.filter(name=PIROGOV_NAME).count(), 1)
         self.assertEqual(MedicalUniversity.objects.filter(name=MSU_NAME).count(), 1)
-        self.assertEqual(StudyDirection.objects.count(), 12)
+        self.assertEqual(MedicalUniversity.objects.filter(name=SPBU_NAME).count(), 1)
+        self.assertEqual(StudyDirection.objects.count(), 13)
 
         first_med = MedicalUniversity.objects.get(name=FIRST_MED_NAME)
         self.assertEqual(first_med.api_config.get("provider"), "1spbgmu")
@@ -92,4 +94,17 @@ class SeedTests(TestCase):
         self.assertEqual(
             lech.filter_params.get("concourse_title"),
             "Основные места в рамках КЦП",
+        )
+
+        spbu = MedicalUniversity.objects.get(name=SPBU_NAME)
+        self.assertEqual(spbu.api_config.get("provider"), "spbu")
+        lech = spbu.directions.get(name="Лечебное дело")
+        self.assertEqual(lech.seats, 21)
+        self.assertEqual(
+            lech.filter_params.get("report_priem_list_02_id"),
+            "019f329a-c2d0-7107-8eea-e92731eaf3d1",
+        )
+        self.assertEqual(
+            lech.filter_params.get("speciality_ids"),
+            ["7dd29c4f-9a88-47e3-afa8-571940bf95fa"],
         )

@@ -3,6 +3,9 @@ from unittest.mock import MagicMock, patch
 
 from apps.admissions.clients.almazov_client import AlmazovClient
 from apps.admissions.clients.almazov_html_parser import parse_seats, parse_table, rows_to_dicts
+from apps.admissions.clients.spbu_client import SPBUClient
+from apps.admissions.clients.spbu_html_parser import parse_applicant_table
+from apps.admissions.clients.spbu_html_parser import parse_seats as parse_spbu_seats
 from apps.admissions.clients.cpk_msu_client import CPKMSUClient
 from apps.admissions.clients.cpk_msu_html_parser import parse_concourse_section
 from apps.admissions.clients.rsmu_client import RSMUClient
@@ -713,6 +716,83 @@ class CPKMSUClientTests(SimpleTestCase):
         self.assertTrue(rows[0]["_is_bvi"])
         self.assertEqual(rows[1]["ID абитуриента"], "1000002")
         self.assertEqual(client.last_seats, 46)
+
+
+class SPBUClientTests(SimpleTestCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        import json
+        from pathlib import Path
+
+        cls.sample_response = json.loads(
+            Path(__file__).resolve().parents[2].joinpath("dev/spbu_api_response.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        cls.sample_html = cls.sample_response["blocks"][0]["html"]
+
+    def test_parse_seats_and_table(self):
+        self.assertEqual(parse_spbu_seats(self.sample_html), 21)
+        headers, rows = parse_applicant_table(self.sample_html)
+        self.assertEqual(headers[1], "Уникальный код поступающего")
+        self.assertGreater(len(rows), 100)
+        self.assertEqual(rows[0][1], "1169071")
+        self.assertEqual(rows[0][2], "БВИ (Победитель ОШ)")
+        self.assertEqual(rows[2][2], "308")
+
+    def test_from_spbu_row_parses_olympiad_and_regular(self):
+        headers, rows = parse_applicant_table(self.sample_html)
+        from apps.admissions.clients.spbu_html_parser import rows_to_dicts
+
+        olympiad = rows_to_dicts(headers, rows)[0]
+        regular = rows_to_dicts(headers, rows)[2]
+        parsed_olympiad = ParsedApplicantRow.from_spbu_row(olympiad, position=1)
+        parsed_regular = ParsedApplicantRow.from_spbu_row(regular, position=3)
+        self.assertEqual(parsed_olympiad.abiturient_id, "1169071")
+        self.assertEqual(parsed_olympiad.nsummark, 0)
+        self.assertEqual(parsed_regular.abiturient_id, "1542510")
+        self.assertEqual(parsed_regular.nsummark, 308)
+        self.assertEqual(parsed_regular.npriority_ssp, 2)
+
+    @patch("apps.admissions.clients.spbu_client.SPBUClient.fetch_list_html")
+    def test_fetch_skips_olympiad_scores_at_threshold(self, mock_html):
+        mock_html.return_value = """
+        <div class="table-information"><table>
+        <tr><th><div>Количество бюджетных мест:</div></th><td>21</td></tr>
+        </table></div>
+        <div class="table-data table-responsive mb-4">
+        <table class="table table-bordered table-hover table-sm">
+        <thead><tr>
+        <th>№</th><th>Уникальный код поступающего</th><th>Сумма конкурсных баллов</th>
+        <th>Сумма баллов за вступительные испытания</th><th>ВИ1</th><th>ВИ2</th><th>ВИ3</th>
+        <th>ИД</th><th>П9</th><th>П10</th><th>Согласие на зачисление</th>
+        <th>Приоритет зачисления, указанный поступающим по данной КГ</th><th>Статус</th>
+        </tr></thead>
+        <tbody>
+        <tr><td>1</td><td>1000001</td><td>БВИ (Победитель ОШ)</td><td>0</td>
+        <td></td><td></td><td></td><td>0</td><td>Нет</td><td>Нет</td><td>Нет</td><td>1</td><td>Участвует</td></tr>
+        <tr><td>2</td><td>1000002</td><td>250</td><td>250</td>
+        <td>100</td><td>100</td><td>50</td><td>0</td><td>Нет</td><td>Нет</td><td>Нет</td><td>1</td><td>Участвует</td></tr>
+        <tr><td>3</td><td>1000003</td><td>199</td><td>199</td>
+        <td>100</td><td>99</td><td>0</td><td>0</td><td>Нет</td><td>Нет</td><td>Нет</td><td>1</td><td>Участвует</td></tr>
+        </tbody></table></div>
+        """
+        client = SPBUClient({"base_url": "https://enrollelists.spbu.ru"})
+        rows = list(
+            client.fetch_all_above_threshold(
+                {
+                    "report_priem_list_02_id": "test",
+                    "speciality_ids": ["7dd29c4f-9a88-47e3-afa8-571940bf95fa"],
+                    "filters": {},
+                },
+                min_score=200,
+            )
+        )
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0]["Уникальный код поступающего"], "1000001")
+        self.assertEqual(rows[1]["Уникальный код поступающего"], "1000002")
+        self.assertEqual(client.last_seats, 21)
 
 
 class AuthTests(TestCase):

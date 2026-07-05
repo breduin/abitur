@@ -16,6 +16,7 @@ flowchart LR
     Factory --> Client5[sechenov GET HTML paged]
     Factory --> Client6[rsmu GET JSON chain]
     Factory --> Client7[cpk_msu GET HTML]
+    Factory --> Client8[spbu POST JSON+HTML]
     Client1 --> API1[abit.1spbgmu.ru]
     Client2 --> API2[spiski.gpmu.org]
     Client3 --> API3[abit.almazovcentre.ru]
@@ -23,6 +24,7 @@ flowchart LR
     Client5 --> API5[priem.sechenov.ru]
     Client6 --> API6[submitted.rsmu.ru]
     Client7 --> API7[cpk.msu.ru]
+    Client8 --> API8[enrollelists.spbu.ru]
     Sync --> DB[(ApplicantProfile)]
 ```
 
@@ -464,6 +466,64 @@ curl -k -s "https://cpk.msu.ru/submitted/bachelor/dep_10" \
 
 ---
 
+## Provider: `spbu` — СПбГУ (СПб)
+
+**URL:** `https://enrollelists.spbu.ru`
+
+### api_config
+
+```json
+{
+  "provider": "spbu",
+  "base_url": "https://enrollelists.spbu.ru",
+  "list_endpoint": "/api/reports/priem-list-02/data",
+  "referer": "https://enrollelists.spbu.ru/reports/PriemList02.php?...",
+  "verify_ssl": false
+}
+```
+
+### Алгоритм
+
+1. **POST** `/api/reports/priem-list-02/data` с JSON-телом из `filter_params`:
+   - `report_priem_list_02_id`
+   - `speciality_ids`
+   - `filters` (факультет, программа, специальность, форма, финансирование и т.д.)
+2. Ответ — JSON с `blocks[]`, в каждом блоке поле `html` с таблицей абитуриентов
+3. Места из информационной таблицы: `Количество бюджетных мест: N`
+4. Парсинг HTML-таблицы `.table-data table` (заголовки в `<thead>`, строки в `<tbody>`)
+5. Пагинации нет; порог `min_fetch_score` при обходе строк
+
+**Олимпиадники/БВИ** в начале списка имеют в колонке «Сумма конкурсных баллов» текст (`БВИ (Победитель ОШ)` и т.п.) — трактуются как 0 баллов и **не останавливают** загрузку по порогу.
+
+### Направления (seed)
+
+| Направление    | speciality_id | Места (seed) |
+|----------------|---------------|--------------|
+| Лечебное дело  | `7dd29c4f-9a88-47e3-afa8-571940bf95fa` | 21 |
+
+### Маппинг полей ответа
+
+| API колонка (рус.) | ApplicantProfile |
+|--------------------|------------------|
+| `Уникальный код поступающего` | `abiturient_id` |
+| (порядок в таблице) | `position` |
+| `Сумма конкурсных баллов` | `nsummark` (нечисловое → 0) |
+| `Приоритет зачисления, указанный поступающим по данной КГ` | `npriority_ssp` |
+| `Статус` | `sstatus_ssp` |
+| `Согласие на зачисление` | `has_enrollment_consent`: «Да» → true |
+
+### Пример curl
+
+```bash
+curl -k -s -X POST "https://enrollelists.spbu.ru/api/reports/priem-list-02/data" \
+  -H "Content-Type: application/json" \
+  -H "Origin: https://enrollelists.spbu.ru" \
+  -H "X-Requested-With: XMLHttpRequest" \
+  -d '{"report_priem_list_02_id":"...","speciality_ids":["..."],"filters":{...}}'
+```
+
+---
+
 ## Обработка ошибок (общая)
 
 | Ситуация | Поведение |
@@ -489,6 +549,7 @@ curl -k -s "https://cpk.msu.ru/submitted/bachelor/dep_10" \
 5. **Сеченовский университет (Мск)** — Лечебное дело (495) и Педиатрия (31), provider sechenov
 6. **Пироговский университет (Мск)** — Лечебное дело (426) и Педиатрия (283), provider rsmu
 7. **МГУ Ломоносова (Мск)** — Лечебное дело (46), provider cpk_msu, `honors_diploma_points=0`
+8. **СПбГУ (СПб)** — Лечебное дело (21), provider spbu
 
 Идемпотентна: `get_or_create` + обновление `filter_params` / `seats` при расхождении.
 
@@ -507,6 +568,8 @@ curl -k -s "https://cpk.msu.ru/submitted/bachelor/dep_10" \
 | `apps/admissions/clients/rsmu_client.py` | Клиент Пироговского (RSMU) |
 | `apps/admissions/clients/cpk_msu_client.py` | Клиент МГУ |
 | `apps/admissions/clients/cpk_msu_html_parser.py` | Парсер HTML-таблиц МГУ |
+| `apps/admissions/clients/spbu_client.py` | Клиент СПбГУ |
+| `apps/admissions/clients/spbu_html_parser.py` | Парсер HTML из JSON-ответа СПбГУ |
 | `apps/admissions/clients/factory.py` | Выбор клиента по provider |
 | `apps/admissions/clients/parsers.py` | Парсинг row → ApplicantProfile |
 | `apps/admissions/services/sync_service.py` | Оркестрация синхронизации |

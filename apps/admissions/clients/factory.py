@@ -6,6 +6,7 @@ from apps.admissions.clients.base import UniversityAPIError
 from apps.admissions.clients.gpmu_client import GPMUClient
 from apps.admissions.clients.rsmu_client import RSMUClient
 from apps.admissions.clients.sechenov_client import SechenovClient
+from apps.admissions.clients.spbu_client import SPBUClient
 from apps.admissions.clients.szgmu_client import SZGMUClient
 from apps.admissions.clients.university_client import UniversityAPIClient
 
@@ -27,6 +28,8 @@ def get_university_client(api_config: dict[str, Any]):
         return RSMUClient(api_config)
     if provider == "cpk_msu":
         return CPKMSUClient(api_config)
+    if provider == "spbu":
+        return SPBUClient(api_config)
     if provider == "1spbgmu":
         return UniversityAPIClient(api_config)
 
