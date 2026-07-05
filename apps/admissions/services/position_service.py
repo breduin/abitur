@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from apps.admissions.models import ApplicantProfile
+from apps.admissions.models import ApplicantProfile, SyncJob
 from apps.universities.models import MedicalUniversity, StudyDirection
 
 
@@ -10,6 +10,7 @@ class PositionResult:
     direction_name: str
     direction_id: int
     seats: int | None
+    applications_count: int | None
     position: int | None
     nsummark: int | None
     sstatus_ssp: str | None
@@ -90,11 +91,17 @@ class PositionService:
             .select_related("university")
             .order_by("university__name", "name")
         )
+        direction_list = list(directions)
+        applications_by_direction = {
+            job.direction_id: job.records_fetched
+            for job in SyncJob.objects.filter(direction__in=direction_list)
+        }
 
-        for direction in directions:
+        for direction in direction_list:
             university = direction.university
             is_applied = university.id in applied_ids
             profile = self._get_profile(direction)
+            applications_count = applications_by_direction.get(direction.id)
 
             if is_applied and profile:
                 results.append(
@@ -103,6 +110,7 @@ class PositionService:
                         direction_name=self._direction_label(direction),
                         direction_id=direction.id,
                         seats=direction.seats,
+                        applications_count=applications_count,
                         position=profile.position,
                         nsummark=profile.nsummark,
                         sstatus_ssp=profile.sstatus_ssp,
@@ -126,6 +134,7 @@ class PositionService:
                         direction_name=self._direction_label(direction),
                         direction_id=direction.id,
                         seats=direction.seats,
+                        applications_count=applications_count,
                         position=position,
                         nsummark=fields["nsummark"],
                         sstatus_ssp=fields["sstatus_ssp"],
@@ -145,6 +154,7 @@ class PositionService:
                         direction_name=self._direction_label(direction),
                         direction_id=direction.id,
                         seats=direction.seats,
+                        applications_count=applications_count,
                         position=self._hypothetical_position(direction, user_score)
                         if user_score is not None
                         else None,
@@ -165,6 +175,7 @@ class PositionService:
                     direction_name=self._direction_label(direction),
                     direction_id=direction.id,
                     seats=direction.seats,
+                    applications_count=applications_count,
                     position=self._hypothetical_position(direction, user_score)
                     if user_score is not None
                     else None,
@@ -203,6 +214,7 @@ class PositionService:
                         direction_name=self._direction_label(direction),
                         direction_id=direction.id,
                         seats=direction.seats,
+                        applications_count=None,
                         position=None,
                         nsummark=None,
                         sstatus_ssp=None,
@@ -229,6 +241,7 @@ class PositionService:
                     direction_name=self._direction_label(direction),
                     direction_id=direction.id,
                     seats=direction.seats,
+                    applications_count=None,
                     position=higher_count + 1,
                     nsummark=user_score,
                     sstatus_ssp="Прогноз (priority=1)",

@@ -144,6 +144,12 @@ class RSMUClient(BaseHTTPClient):
         applicants = data.get("applicants") or []
         position = 0
         for applicant in applicants:
+            if applicant.get("noExam"):
+                position += 1
+                applicant["_position"] = position
+                yield applicant
+                continue
+
             score = self._parse_score(applicant.get("total"))
             if self._should_stop_at_score(score, min_score):
                 break

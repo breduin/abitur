@@ -38,17 +38,22 @@ class BaseHTTPClient:
         headers = kwargs.pop("headers", {})
         headers.setdefault("User-Agent", self.user_agent)
         last_exc: Exception | None = None
+        timeout = kwargs.pop("timeout", self.api_config.get("timeout", self.DEFAULT_TIMEOUT))
 
         for attempt in range(self.MAX_RETRIES):
             try:
                 response = self.session.request(
                     method,
                     url,
-                    timeout=self.DEFAULT_TIMEOUT,
+                    timeout=timeout,
                     headers=headers,
                     **kwargs,
                 )
-            except (requests.ConnectionError, requests.Timeout, requests.SSLError) as exc:
+            except (
+                requests.ConnectionError,
+                requests.Timeout,
+                requests.exceptions.SSLError,
+            ) as exc:
                 last_exc = exc
                 if attempt < self.MAX_RETRIES - 1:
                     time.sleep(self.BACKOFF_BASE * (2**attempt))

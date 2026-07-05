@@ -33,6 +33,7 @@
                     <th>Медицинский университет</th>
                     <th>Направление</th>
                     <th>Количество мест</th>
+                    <th>Подано заявлений</th>
                     <th>Позиция</th>
                     <th>Баллы</th>
                     <th>Статус</th>
@@ -46,6 +47,7 @@
                     <td>{{ row.university_name }}</td>
                     <td>{{ row.direction_name }}</td>
                     <td>{% if row.seats is not None %}{{ row.seats }}{% else %}—{% endif %}</td>
+                    <td>{% if row.applications_count is not None %}{{ row.applications_count }}{% else %}—{% endif %}</td>
                     <td>{% if row.position %}{{ row.position }}{% else %}—{% endif %}</td>
                     <td>{% if row.nsummark %}{{ row.nsummark }}{% else %}—{% endif %}</td>
                     <td>{{ row.sstatus_ssp|default:"—" }}</td>
@@ -59,7 +61,7 @@
                     </td>
                 </tr>
                 {% empty %}
-                <tr><td colspan="8" class="text-muted">Нет данных</td></tr>
+                <tr><td colspan="9" class="text-muted">Нет данных</td></tr>
                 {% endfor %}
             </tbody>
         </table>

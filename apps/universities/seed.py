@@ -208,6 +208,7 @@ PIROGOV_API_CONFIG = {
     "base_url": "https://submitted.rsmu.ru",
     "referer": "https://submitted.rsmu.ru/",
     "admission_title": "Прием на обучение на специалитет - 2026",
+    "timeout": 120,
 }
 
 PIROGOV_DIRECTIONS = [

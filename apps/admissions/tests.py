@@ -512,8 +512,17 @@ RSMU_PROGRAMS_JSON = [
 RSMU_APPLICANTS_JSON = {
     "program": "Лечебное дело (Лечебное дело) Общий конкурс 2026",
     "plan": 426,
-    "count": 5,
+    "count": 6,
     "applicants": [
+        {
+            "order": 1,
+            "title": "1000000",
+            "total": 10,
+            "priority": 1,
+            "state": "Подано",
+            "approval": False,
+            "noExam": True,
+        },
         {
             "order": 99,
             "title": "1000001",
@@ -557,10 +566,10 @@ class RSMUClientTests(SimpleTestCase):
         rsmu_client._NAV_CACHE.clear()
 
     def test_from_rsmu_row_parses_valid_data(self):
-        row = RSMU_APPLICANTS_JSON["applicants"][1]
-        parsed = ParsedApplicantRow.from_rsmu_row(row, position=2)
+        row = RSMU_APPLICANTS_JSON["applicants"][2]
+        parsed = ParsedApplicantRow.from_rsmu_row(row, position=3)
         self.assertEqual(parsed.abiturient_id, "1000002")
-        self.assertEqual(parsed.position, 2)
+        self.assertEqual(parsed.position, 3)
         self.assertEqual(parsed.nsummark, 310)
         self.assertEqual(parsed.npriority_ssp, 1)
         self.assertTrue(parsed.has_enrollment_consent)
@@ -583,12 +592,54 @@ class RSMUClientTests(SimpleTestCase):
                 min_score=200,
             )
         )
-        self.assertEqual(len(rows), 3)
-        self.assertEqual(rows[0]["title"], "1000001")
+        self.assertEqual(len(rows), 4)
+        self.assertEqual(rows[0]["title"], "1000000")
         self.assertEqual(rows[0]["_position"], 1)
         self.assertEqual(rows[-1]["title"], "1000003")
         self.assertEqual(client.last_seats, 426)
         self.assertEqual(client.sync_warning, "")
+
+    @patch("apps.admissions.clients.rsmu_client.RSMUClient._fetch_json")
+    def test_fetch_skips_noexam_with_low_scores(self, mock_fetch):
+        mock_fetch.side_effect = [
+            RSMU_ROOT_JSON,
+            RSMU_DATES_JSON,
+            RSMU_PROGRAMS_JSON,
+            {
+                "plan": 426,
+                "applicants": [
+                    {
+                        "title": "1000000",
+                        "total": 10,
+                        "priority": 1,
+                        "state": "Подано",
+                        "noExam": True,
+                    },
+                    {
+                        "title": "1000001",
+                        "total": 250,
+                        "priority": 1,
+                        "state": "Подано",
+                    },
+                    {
+                        "title": "1000002",
+                        "total": 199,
+                        "priority": 1,
+                        "state": "Подано",
+                    },
+                ],
+            },
+        ]
+        client = RSMUClient({"base_url": "https://submitted.rsmu.ru"})
+        rows = list(
+            client.fetch_all_above_threshold(
+                {"program_title": "Лечебное дело (Лечебное дело) Общий конкурс 2026"},
+                min_score=200,
+            )
+        )
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0]["title"], "1000000")
+        self.assertEqual(rows[1]["title"], "1000001")
 
     @patch("apps.admissions.clients.rsmu_client.RSMUClient._fetch_json")
     def test_multiple_dates_set_sync_warning(self, mock_fetch):
