@@ -30,7 +30,12 @@ from apps.admissions.services.consent_modeling_service import (
     get_user_consent_projection,
 )
 from apps.admissions.services.position_service import PositionService
-from apps.admissions.services.sync_service import should_skip_sync, sync_direction
+from apps.admissions.services.sync_service import (
+    mark_force_sync_started,
+    should_skip_sync,
+    sync_direction,
+)
+from apps.admissions.services.sync_status_service import get_sync_progress_context
 from apps.universities.models import MedicalUniversity, StudyDirection
 from apps.universities.seed import FIRST_MED_NAME, PEDIATRIC_NAME, SECHENOV_NAME
 from apps.users.models import User
@@ -134,6 +139,77 @@ class SyncServiceTests(TestCase):
         self.assertEqual(result["status"], "rate_limited")
         job = SyncJob.objects.get(direction=self.direction)
         self.assertEqual(job.status, SyncJob.Status.RATE_LIMITED)
+
+    @patch("apps.admissions.services.sync_service.get_university_client")
+    def test_sync_flushes_records_fetched_incrementally(self, mock_get_client):
+        self.university.api_config = {
+            "provider": "gpmu",
+            "base_url": "https://example.com",
+        }
+        self.university.save(update_fields=["api_config"])
+
+        mock_client = mock_get_client.return_value
+        rows = [
+            {
+                "Уникальный код": str(index),
+                "Сумма конкурсных баллов": "300",
+                "Приоритет": "1",
+                "Состояние договора": "",
+            }
+            for index in range(30)
+        ]
+        mock_client.fetch_all_above_threshold.return_value = iter(rows)
+        mock_client.last_seats = 100
+
+        result = sync_direction(self.direction.id, force=True, check_interval=False)
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(result["records"], 30)
+
+        job = SyncJob.objects.get(direction=self.direction)
+        self.assertEqual(job.records_fetched, 30)
+
+    def test_mark_force_sync_started_resets_jobs(self):
+        job = SyncJob.objects.create(
+            direction=self.direction,
+            status=SyncJob.Status.SUCCESS,
+            records_fetched=999,
+        )
+        updated = mark_force_sync_started()
+        self.assertEqual(updated, 1)
+        job.refresh_from_db()
+        self.assertEqual(job.status, SyncJob.Status.PENDING)
+        self.assertEqual(job.records_fetched, 0)
+
+
+class SyncStatusServiceTests(TestCase):
+    def setUp(self):
+        self.university = MedicalUniversity.objects.create(
+            name="Test MU",
+            api_config={"provider": "gpmu", "base_url": "https://example.com"},
+        )
+        self.direction = StudyDirection.objects.create(
+            university=self.university,
+            name="Лечебное дело",
+            filter_params={},
+            seats=100,
+        )
+
+    def test_get_sync_progress_context_running(self):
+        SyncJob.objects.create(
+            direction=self.direction,
+            status=SyncJob.Status.RUNNING,
+            records_fetched=50,
+        )
+        context = get_sync_progress_context()
+        self.assertTrue(context["sync_is_active"])
+        self.assertEqual(context["sync_running"], 1)
+        row = context["sync_directions"][0]
+        self.assertEqual(row.progress_percent, 50)
+        self.assertFalse(row.is_indeterminate)
+
+    def test_refresh_status_requires_login(self):
+        response = self.client.get("/api/refresh/status/")
+        self.assertEqual(response.status_code, 302)
 
 
 class PositionServiceTests(TestCase):

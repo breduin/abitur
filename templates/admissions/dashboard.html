@@ -9,8 +9,7 @@
         <button
             class="btn btn-accent"
             hx-post="{% url 'refresh_data' %}"
-            hx-target="#refresh-message"
-            hx-swap="innerHTML"
+            hx-swap="none"
             hx-indicator="#refresh-spinner"
         >
             Обновить данные сейчас
@@ -20,7 +19,7 @@
 </div>
 <div id="refresh-message"></div>
 
-{% include "admissions/partials/sync_status.html" %}
+{% include "admissions/partials/sync_progress.html" %}
 
 <div class="card shadow-sm mb-4">
     <div class="card-header bg-primary-custom text-white">

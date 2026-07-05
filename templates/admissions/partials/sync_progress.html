@@ -1,0 +1,101 @@
+<div
+    id="sync-progress-panel"
+    class="sync-progress-panel"
+    {% if sync_is_active %}
+    hx-get="{% url 'refresh_status' %}"
+    hx-trigger="every 3s"
+    hx-swap="outerHTML"
+    {% endif %}
+>
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-primary-custom text-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <h2 class="h5 mb-0">Загрузка данных</h2>
+            {% if sync_is_active %}
+            <span class="badge bg-light text-dark">Обновление…</span>
+            {% elif sync_total %}
+            <span class="badge bg-light text-dark">Готово: {{ sync_completed }}/{{ sync_total }}</span>
+            {% endif %}
+        </div>
+        <div class="card-body">
+            {% if sync_total %}
+            <div class="mb-3">
+                <div class="d-flex justify-content-between small text-muted mb-1">
+                    <span>Общий прогресс</span>
+                    <span>{{ sync_completed }}/{{ sync_total }} направлений</span>
+                </div>
+                <div class="progress sync-progress-overall" role="progressbar"
+                     aria-valuenow="{{ sync_overall_percent }}" aria-valuemin="0" aria-valuemax="100">
+                    <div
+                        class="progress-bar{% if sync_is_active %} progress-bar-striped progress-bar-animated{% endif %}"
+                        style="width: {{ sync_overall_percent }}%;"
+                    ></div>
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0 sync-progress-table">
+                    <thead>
+                        <tr>
+                            <th>Медицинский университет</th>
+                            <th>Направление</th>
+                            <th>Статус</th>
+                            <th style="min-width: 180px;">Прогресс</th>
+                            <th class="text-end">Записей</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in sync_directions %}
+                        <tr>
+                            <td>{{ row.university_name }}</td>
+                            <td>{{ row.direction_name }}</td>
+                            <td>
+                                {% if row.status == "success" %}
+                                    <span class="badge bg-success">{{ row.status_label }}</span>
+                                {% elif row.status == "running" %}
+                                    <span class="badge bg-primary">{{ row.status_label }}</span>
+                                {% elif row.status == "pending" %}
+                                    <span class="badge bg-secondary">{{ row.status_label }}</span>
+                                {% elif row.status == "rate_limited" %}
+                                    <span class="badge bg-warning text-dark">{{ row.status_label }}</span>
+                                {% elif row.status == "error" %}
+                                    <span class="badge bg-danger">{{ row.status_label }}</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">{{ row.status_label }}</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if row.is_indeterminate %}
+                                <div class="progress sync-progress-row">
+                                    <div class="progress-bar progress-bar-striped progress-bar-animated" style="width: 100%;"></div>
+                                </div>
+                                {% elif row.progress_percent is not None %}
+                                <div class="progress sync-progress-row">
+                                    <div class="progress-bar" style="width: {{ row.progress_percent }}%;"></div>
+                                </div>
+                                {% else %}
+                                <span class="text-muted small">—</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                {{ row.records_fetched }}{% if row.seats %} / ~{{ row.seats }}{% endif %}
+                            </td>
+                        </tr>
+                        {% if row.last_error %}
+                        <tr class="table-warning">
+                            <td colspan="5" class="small py-1">{{ row.last_error }}</td>
+                        </tr>
+                        {% endif %}
+                        {% empty %}
+                        <tr>
+                            <td colspan="5" class="text-muted">Нет направлений для синхронизации.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    {% include "admissions/partials/sync_status.html" %}
+</div>

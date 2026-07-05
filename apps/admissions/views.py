@@ -1,6 +1,5 @@
 from django.contrib.auth.decorators import login_required
 from django.db.models import Max
-from django.http import HttpResponse
 from django.shortcuts import redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
@@ -17,6 +16,8 @@ from apps.admissions.services.consent_modeling_service import (
     get_user_consent_projection,
 )
 from apps.admissions.services.position_service import PositionService
+from apps.admissions.services.sync_service import mark_force_sync_started
+from apps.admissions.services.sync_status_service import get_sync_progress_context
 from apps.admissions.tasks import sync_all_active_universities
 from apps.universities.models import MedicalUniversity
 
@@ -31,14 +32,15 @@ def _get_last_data_update():
 @login_required
 def dashboard_view(request):
     service = PositionService(request.user)
+    sync_context = get_sync_progress_context()
+    sync_warnings = MedicalUniversity.objects.filter(
+        is_active=True,
+    ).exclude(sync_warning="")
     rate_limited_jobs = SyncJob.objects.filter(
         status=SyncJob.Status.RATE_LIMITED,
         next_retry_at__isnull=False,
         next_retry_at__gt=timezone.now(),
     ).select_related("direction__university")
-    sync_warnings = MedicalUniversity.objects.filter(
-        is_active=True,
-    ).exclude(sync_warning="")
 
     snapshot = AnalyticsSnapshot.objects.order_by("-computed_at").first()
     if snapshot is None and ApplicantProfile.objects.exists():
@@ -67,6 +69,7 @@ def dashboard_view(request):
             "rate_limited_jobs": rate_limited_jobs,
             "sync_warnings": sync_warnings,
             "last_data_update": _get_last_data_update(),
+            **sync_context,
         },
     )
 
@@ -74,25 +77,29 @@ def dashboard_view(request):
 @login_required
 @require_http_methods(["POST"])
 def refresh_data_view(request):
+    mark_force_sync_started()
     sync_all_active_universities.delay(force=True)
+    sync_context = get_sync_progress_context()
     if request.headers.get("HX-Request"):
-        return HttpResponse(
-            '<div class="alert alert-info">Обновление запущено. Данные появятся через несколько минут.</div>'
+        response = render(
+            request,
+            "admissions/partials/refresh_started.html",
+            sync_context,
         )
+        return response
     return redirect("dashboard")
 
 
 @login_required
 def refresh_status_partial(request):
-    jobs = SyncJob.objects.filter(
+    sync_context = get_sync_progress_context()
+    sync_context["rate_limited_jobs"] = SyncJob.objects.filter(
         status=SyncJob.Status.RATE_LIMITED,
     ).select_related("direction__university")
-    return render(request, "admissions/partials/sync_status.html", {
-        "rate_limited_jobs": jobs,
-        "sync_warnings": MedicalUniversity.objects.filter(
-            is_active=True,
-        ).exclude(sync_warning=""),
-    })
+    sync_context["sync_warnings"] = MedicalUniversity.objects.filter(
+        is_active=True,
+    ).exclude(sync_warning="")
+    return render(request, "admissions/partials/sync_progress.html", sync_context)
 
 
 def _build_chart_data(payload: dict | None) -> dict | None:

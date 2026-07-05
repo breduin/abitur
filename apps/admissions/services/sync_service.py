@@ -11,6 +11,8 @@ from apps.universities.models import MedicalUniversity, StudyDirection
 
 logger = logging.getLogger(__name__)
 
+PROGRESS_FLUSH_EVERY = 25
+
 
 def get_or_create_sync_job(direction: StudyDirection) -> SyncJob:
     job, _ = SyncJob.objects.get_or_create(direction=direction)
@@ -26,6 +28,38 @@ def should_skip_sync(university: MedicalUniversity, force: bool) -> bool:
         return False
     next_allowed = university.last_synced_at + timedelta(seconds=university.sync_interval_seconds)
     return timezone.now() < next_allowed
+
+
+def mark_force_sync_started() -> int:
+    direction_ids = StudyDirection.objects.filter(
+        university__is_active=True,
+    ).exclude(
+        university__api_config={},
+    ).values_list("id", flat=True)
+
+    updated = 0
+    for direction_id in direction_ids:
+        job, _ = SyncJob.objects.get_or_create(direction_id=direction_id)
+        job.status = SyncJob.Status.PENDING
+        job.records_fetched = 0
+        job.last_error = ""
+        job.next_retry_at = None
+        job.save(
+            update_fields=[
+                "status",
+                "records_fetched",
+                "last_error",
+                "next_retry_at",
+                "updated_at",
+            ]
+        )
+        updated += 1
+    return updated
+
+
+def _flush_sync_progress(job: SyncJob, records: int) -> None:
+    job.records_fetched = records
+    job.save(update_fields=["records_fetched", "updated_at"])
 
 
 def sync_direction(
@@ -48,7 +82,8 @@ def sync_direction(
 
     job.status = SyncJob.Status.RUNNING
     job.last_error = ""
-    job.save(update_fields=["status", "last_error", "updated_at"])
+    job.records_fetched = 0
+    job.save(update_fields=["status", "last_error", "records_fetched", "updated_at"])
 
     provider = university.api_config.get("provider", "1spbgmu")
     client = get_university_client(university.api_config)
@@ -78,6 +113,8 @@ def sync_direction(
                 },
             )
             records += 1
+            if records % PROGRESS_FLUSH_EVERY == 0:
+                _flush_sync_progress(job, records)
 
         if client.last_seats is not None:
             direction.seats = client.last_seats
@@ -101,13 +138,25 @@ def sync_direction(
         job.status = SyncJob.Status.RATE_LIMITED
         job.next_retry_at = timezone.now() + timedelta(seconds=retry_after)
         job.last_error = str(exc)
-        job.save(update_fields=["status", "next_retry_at", "last_error", "updated_at"])
+        job.records_fetched = records
+        job.save(
+            update_fields=[
+                "status",
+                "next_retry_at",
+                "last_error",
+                "records_fetched",
+                "updated_at",
+            ]
+        )
         return {"status": "rate_limited", "retry_after": retry_after}
 
     except UniversityAPIError as exc:
         job.status = SyncJob.Status.ERROR
         job.last_error = str(exc)
-        job.save(update_fields=["status", "last_error", "updated_at"])
+        job.records_fetched = records
+        job.save(
+            update_fields=["status", "last_error", "records_fetched", "updated_at"]
+        )
         logger.exception("Sync failed for direction %s", direction_id)
         return {"status": "error", "error": str(exc)}
 

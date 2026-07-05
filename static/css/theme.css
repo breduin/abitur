@@ -286,3 +286,23 @@ body {
     gap: 0.75rem;
     align-content: start;
 }
+
+.sync-progress-overall {
+    height: 0.85rem;
+    background-color: rgba(77, 166, 255, 0.15);
+}
+
+.sync-progress-row {
+    height: 0.65rem;
+    background-color: rgba(77, 166, 255, 0.12);
+}
+
+.sync-progress-row .progress-bar,
+.sync-progress-overall .progress-bar {
+    background-color: var(--primary-blue);
+}
+
+.sync-progress-table td,
+.sync-progress-table th {
+    vertical-align: middle;
+}

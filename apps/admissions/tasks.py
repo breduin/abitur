@@ -1,7 +1,7 @@
 from celery import shared_task
 
 from apps.admissions.services.analytics_service import save_analytics_snapshot
-from apps.admissions.services.sync_service import sync_all_active, sync_direction, sync_university
+from apps.admissions.services.sync_service import mark_force_sync_started, sync_all_active, sync_direction, sync_university
 
 
 @shared_task
@@ -11,6 +11,8 @@ def compute_analytics():
 
 @shared_task
 def sync_all_active_universities(force: bool = False):
+    if force:
+        mark_force_sync_started()
     results = sync_all_active(force=force)
     had_success = any(item.get("status") == "success" for item in results)
     if had_success:
