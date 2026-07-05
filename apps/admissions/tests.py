@@ -3,6 +3,8 @@ from unittest.mock import MagicMock, patch
 
 from apps.admissions.clients.almazov_client import AlmazovClient
 from apps.admissions.clients.almazov_html_parser import parse_seats, parse_table, rows_to_dicts
+from apps.admissions.clients.cpk_msu_client import CPKMSUClient
+from apps.admissions.clients.cpk_msu_html_parser import parse_concourse_section
 from apps.admissions.clients.rsmu_client import RSMUClient
 from apps.admissions.clients.sechenov_client import SechenovClient
 from apps.admissions.clients.sechenov_html_parser import parse_page_rows
@@ -605,6 +607,112 @@ class RSMUClientTests(SimpleTestCase):
         )
         self.assertIn("несколько дат списков", client.sync_warning)
         self.assertIn("04.07.2026 19:00", client.sync_warning)
+
+
+class CPKMSUClientTests(SimpleTestCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        from pathlib import Path
+
+        cls.sample_html = Path(__file__).resolve().parents[2].joinpath(
+            "dev/cpk_msu_dep_10.html"
+        ).read_text(encoding="utf-8")
+
+    def test_parse_concourse_section(self):
+        seats, bvi_rows, main_rows = parse_concourse_section(
+            self.sample_html,
+            program_name="Лечебное дело",
+            concourse_title="Основные места в рамках КЦП",
+        )
+        self.assertEqual(seats, 46)
+        self.assertEqual(len(bvi_rows), 0)
+        self.assertGreater(len(main_rows), 100)
+        self.assertEqual(main_rows[0]["ID абитуриента"], "1187789")
+        self.assertEqual(main_rows[0]["Сумма конкурсных баллов"], "298")
+
+    def test_from_cpk_msu_row_parses_valid_data(self):
+        _, _, main_rows = parse_concourse_section(
+            self.sample_html,
+            program_name="Лечебное дело",
+            concourse_title="Основные места в рамках КЦП",
+        )
+        parsed = ParsedApplicantRow.from_cpk_msu_row(main_rows[0], position=1)
+        self.assertEqual(parsed.abiturient_id, "1187789")
+        self.assertEqual(parsed.nsummark, 298)
+        self.assertEqual(parsed.npriority_ssp, 1)
+        self.assertFalse(parsed.has_enrollment_consent)
+
+    def test_from_cpk_msu_bvi_row_has_zero_score(self):
+        row = {
+            "ID абитуриента": "9999999",
+            "Приоритет": "1",
+            "Статус заявления": "На рассмотрении",
+            "Наличие согласия на зачисление в МГУ": "Да",
+            "_is_bvi": True,
+        }
+        parsed = ParsedApplicantRow.from_cpk_msu_row(row, position=1)
+        self.assertEqual(parsed.nsummark, 0)
+        self.assertTrue(parsed.has_enrollment_consent)
+
+    @patch("apps.admissions.clients.cpk_msu_client.CPKMSUClient.fetch_list_html")
+    def test_fetch_includes_bvi_before_main_and_stops_at_threshold(self, mock_html):
+        bvi_table = """
+        <h5>Лица, имеющие право на прием без вступительных испытаний</h5>
+        <table class="submitted-table"><tbody>
+        <tr><th>№</th><th>ID абитуриента</th><th>Приоритет</th><th>ИД</th>
+        <th colspan="4">Баллы за вступительные испытания</th>
+        <th>Согласие</th><th>Статус заявления</th></tr>
+        <tr><th></th><th></th><th></th><th></th>
+        <th>Химия</th><th>Биология</th><th>Русский</th><th>Доп</th>
+        <th></th><th></th></tr>
+        <tr><td>1</td><td>1000001</td><td>1</td><td>0</td>
+        <td></td><td></td><td></td><td></td>
+        <td>Да</td><td>На рассмотрении</td></tr>
+        </tbody></table>
+        """
+        main_table = """
+        <h5>Лица, не имеющие право на прием без вступительных испытаний</h5>
+        <table class="submitted-table"><tbody>
+        <tr><th>№</th><th>ID абитуриента</th><th>Приоритет</th>
+        <th>Сумма конкурсных баллов</th><th>Сумма баллов за ВИ</th><th>ИД</th>
+        <th colspan="4">Баллы за вступительные испытания</th>
+        <th>Наличие согласия на зачисление в МГУ</th><th>Статус заявления</th></tr>
+        <tr><th></th><th></th><th></th><th></th><th></th><th></th>
+        <th>Химия</th><th>Биология</th><th>Русский</th><th>Доп</th>
+        <th></th><th></th></tr>
+        <tr><td>1</td><td>1000002</td><td>1</td><td>250</td><td>250</td><td>0</td>
+        <td>100</td><td>100</td><td>50</td><td></td>
+        <td>Нет</td><td>На рассмотрении</td></tr>
+        <tr><td>2</td><td>1000003</td><td>1</td><td>199</td><td>199</td><td>0</td>
+        <td>100</td><td>99</td><td>0</td><td></td>
+        <td>Нет</td><td>На рассмотрении</td></tr>
+        </tbody></table>
+        """
+        mock_html.return_value = f"""
+        <h4 class="submitted-section-title">Образовательная программа: Лечебное дело</h4>
+        <div class="submitted-concourse">
+        <h4 class="submitted-concourse-title">Основные места в рамках КЦП</h4>
+        <div>Всего мест: 46.</div>
+        {bvi_table}
+        <br>{main_table}
+        </div>
+        """
+        client = CPKMSUClient({"base_url": "https://cpk.msu.ru"})
+        rows = list(
+            client.fetch_all_above_threshold(
+                {
+                    "list_path": "/submitted/bachelor/dep_10",
+                    "program_name": "Лечебное дело",
+                },
+                min_score=200,
+            )
+        )
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0]["ID абитуриента"], "1000001")
+        self.assertTrue(rows[0]["_is_bvi"])
+        self.assertEqual(rows[1]["ID абитуриента"], "1000002")
+        self.assertEqual(client.last_seats, 46)
 
 
 class AuthTests(TestCase):

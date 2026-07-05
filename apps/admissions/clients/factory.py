@@ -1,6 +1,7 @@
 from typing import Any
 
 from apps.admissions.clients.almazov_client import AlmazovClient
+from apps.admissions.clients.cpk_msu_client import CPKMSUClient
 from apps.admissions.clients.base import UniversityAPIError
 from apps.admissions.clients.gpmu_client import GPMUClient
 from apps.admissions.clients.rsmu_client import RSMUClient
@@ -24,6 +25,8 @@ def get_university_client(api_config: dict[str, Any]):
         return SechenovClient(api_config)
     if provider == "rsmu":
         return RSMUClient(api_config)
+    if provider == "cpk_msu":
+        return CPKMSUClient(api_config)
     if provider == "1spbgmu":
         return UniversityAPIClient(api_config)
 

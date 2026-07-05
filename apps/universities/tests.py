@@ -5,6 +5,7 @@ from apps.universities.seed import (
     ALMAZOV_NAME,
     FIRST_MED_NAME,
     PEDIATRIC_NAME,
+    MSU_NAME,
     PIROGOV_NAME,
     SECHENOV_NAME,
     SZGMU_NAME,
@@ -23,7 +24,8 @@ class SeedTests(TestCase):
         self.assertEqual(MedicalUniversity.objects.filter(name=SZGMU_NAME).count(), 1)
         self.assertEqual(MedicalUniversity.objects.filter(name=SECHENOV_NAME).count(), 1)
         self.assertEqual(MedicalUniversity.objects.filter(name=PIROGOV_NAME).count(), 1)
-        self.assertEqual(StudyDirection.objects.count(), 11)
+        self.assertEqual(MedicalUniversity.objects.filter(name=MSU_NAME).count(), 1)
+        self.assertEqual(StudyDirection.objects.count(), 12)
 
         first_med = MedicalUniversity.objects.get(name=FIRST_MED_NAME)
         self.assertEqual(first_med.api_config.get("provider"), "1spbgmu")
@@ -79,3 +81,15 @@ class SeedTests(TestCase):
         pirogov_seats = {d.name: d.seats for d in pirogov.directions.all()}
         self.assertEqual(pirogov_seats["Лечебное дело"], 426)
         self.assertEqual(pirogov_seats["Педиатрия"], 283)
+
+        msu = MedicalUniversity.objects.get(name=MSU_NAME)
+        self.assertEqual(msu.api_config.get("provider"), "cpk_msu")
+        self.assertEqual(msu.honors_diploma_points, 0)
+        lech = msu.directions.get(name="Лечебное дело")
+        self.assertEqual(lech.seats, 46)
+        self.assertEqual(lech.filter_params.get("list_path"), "/submitted/bachelor/dep_10")
+        self.assertEqual(lech.filter_params.get("program_name"), "Лечебное дело")
+        self.assertEqual(
+            lech.filter_params.get("concourse_title"),
+            "Основные места в рамках КЦП",
+        )

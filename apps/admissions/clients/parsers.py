@@ -17,4 +17,7 @@ def parse_applicant_row(row: dict, provider: str) -> ParsedApplicantRow | None:
     if provider == "rsmu":
         position = int(row.get("_position", 0))
         return ParsedApplicantRow.from_rsmu_row(row, position=position)
+    if provider == "cpk_msu":
+        position = int(row.get("_position", 0))
+        return ParsedApplicantRow.from_cpk_msu_row(row, position=position)
     return ParsedApplicantRow.from_first_med_row(row)

@@ -49,6 +49,11 @@ def parse_rsmu_enrollment_consent(row: dict[str, Any]) -> bool:
     return bool(row.get("approval"))
 
 
+def parse_cpk_msu_enrollment_consent(row: dict[str, Any]) -> bool:
+    value = str(row.get("Наличие согласия на зачисление в МГУ", "")).strip().lower()
+    return value in {"да", "✓", "✔", "yes", "true", "1"}
+
+
 def parse_first_med_enrollment_consent(row: dict[str, Any]) -> bool:
     value = row.get("ncons4enr")
     if isinstance(value, bool):

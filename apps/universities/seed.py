@@ -4,6 +4,7 @@ ALMAZOV_NAME = "Центр Алмазова"
 SZGMU_NAME = "СЗГМУ Мечникова (СПб)"
 SECHENOV_NAME = "Сеченовский университет (Мск)"
 PIROGOV_NAME = "Пироговский университет (Мск)"
+MSU_NAME = "МГУ Ломоносова (Мск)"
 
 FIRST_MED_API_CONFIG = {
     "provider": "1spbgmu",
@@ -238,6 +239,39 @@ def ensure_pirogov_seed():
     _ensure_university_directions(university, PIROGOV_API_CONFIG, PIROGOV_DIRECTIONS)
 
 
+MSU_API_CONFIG = {
+    "provider": "cpk_msu",
+    "base_url": "https://cpk.msu.ru",
+    "verify_ssl": False,
+}
+
+MSU_DIRECTIONS = [
+    {
+        "name": "Лечебное дело",
+        "seats": 46,
+        "filter_params": {
+            "list_path": "/submitted/bachelor/dep_10",
+            "program_name": "Лечебное дело",
+            "concourse_title": "Основные места в рамках КЦП",
+            "seats": 46,
+        },
+    },
+]
+
+
+def ensure_msu_seed():
+    from apps.universities.models import MedicalUniversity
+
+    university, _ = MedicalUniversity.objects.get_or_create(
+        name=MSU_NAME,
+        defaults={"api_config": MSU_API_CONFIG, "honors_diploma_points": 0},
+    )
+    if university.honors_diploma_points != 0:
+        university.honors_diploma_points = 0
+        university.save(update_fields=["honors_diploma_points"])
+    _ensure_university_directions(university, MSU_API_CONFIG, MSU_DIRECTIONS)
+
+
 def ensure_seed_data():
     ensure_first_med_seed()
     ensure_pediatric_seed()
@@ -245,3 +279,4 @@ def ensure_seed_data():
     ensure_szgmu_seed()
     ensure_sechenov_seed()
     ensure_pirogov_seed()
+    ensure_msu_seed()

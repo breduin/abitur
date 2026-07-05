@@ -3,6 +3,7 @@ from typing import Any
 
 from apps.admissions.clients.field_parsers import (
     parse_almazov_enrollment_consent,
+    parse_cpk_msu_enrollment_consent,
     parse_first_med_enrollment_consent,
     parse_gpmu_competition_status,
     parse_gpmu_enrollment_consent,
@@ -108,6 +109,32 @@ class ParsedApplicantRow:
             nsummark=nsummark,
             npriority_ssp=parse_priority(row.get("Приоритет")),
             has_enrollment_consent=parse_almazov_enrollment_consent(row),
+            raw_data=row,
+        )
+
+    @classmethod
+    def from_cpk_msu_row(cls, row: dict[str, Any], position: int) -> "ParsedApplicantRow | None":
+        abiturient_id = str(row.get("ID абитуриента", "")).strip()
+        if not abiturient_id:
+            return None
+
+        if row.get("_is_bvi"):
+            nsummark = 0
+        else:
+            try:
+                nsummark = int(row.get("Сумма конкурсных баллов") or 0)
+            except (TypeError, ValueError):
+                return None
+
+        status = str(row.get("Статус заявления", "")).strip() or "На рассмотрении"
+
+        return cls(
+            abiturient_id=abiturient_id,
+            position=position,
+            sstatus_ssp=status,
+            nsummark=nsummark,
+            npriority_ssp=parse_priority(row.get("Приоритет")),
+            has_enrollment_consent=parse_cpk_msu_enrollment_consent(row),
             raw_data=row,
         )
 

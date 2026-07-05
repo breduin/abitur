@@ -15,12 +15,14 @@ flowchart LR
     Factory --> Client4[szgmu GET HTML]
     Factory --> Client5[sechenov GET HTML paged]
     Factory --> Client6[rsmu GET JSON chain]
+    Factory --> Client7[cpk_msu GET HTML]
     Client1 --> API1[abit.1spbgmu.ru]
     Client2 --> API2[spiski.gpmu.org]
     Client3 --> API3[abit.almazovcentre.ru]
     Client4 --> API4[szgmu.ru]
     Client5 --> API5[priem.sechenov.ru]
     Client6 --> API6[submitted.rsmu.ru]
+    Client7 --> API7[cpk.msu.ru]
     Sync --> DB[(ApplicantProfile)]
 ```
 
@@ -410,6 +412,58 @@ curl -s "https://submitted.rsmu.ru/data/root.json?v=${TS}&_=$((TS+3000))" \
 
 ---
 
+## Provider: `cpk_msu` — МГУ Ломоносова (Мск)
+
+**URL:** `https://cpk.msu.ru`
+
+### api_config
+
+```json
+{
+  "provider": "cpk_msu",
+  "base_url": "https://cpk.msu.ru",
+  "verify_ssl": false
+}
+```
+
+**Баллы за аттестат с отличием:** `honors_diploma_points = 0` (в seed).
+
+### Алгоритм
+
+1. **GET** `/submitted/bachelor/dep_10` (путь задаётся в `filter_params.list_path`)
+2. HTML содержит несколько программ и конкурсов. Выбирается секция по `program_name` и `concourse_title`
+3. Внутри конкурса две таблицы:
+   - **БВИ** («Лица, имеющие право на прием без вступительных испытаний») — в начале общего списка, всегда полностью
+   - **Основная** («Лица, не имеющие право…») — с порогом `min_fetch_score`
+4. Пагинации нет; места из текста `Всего мест: N.`
+
+### Направления (seed)
+
+| Направление    | list_path | concourse_title | Места (seed) |
+|----------------|-----------|-----------------|--------------|
+| Лечебное дело  | `/submitted/bachelor/dep_10` | Основные места в рамках КЦП | 46 |
+
+### Маппинг полей ответа
+
+| API колонка (рус.) | ApplicantProfile |
+|--------------------|------------------|
+| `ID абитуриента` | `abiturient_id` |
+| (порядок: БВИ, затем основная) | `position` |
+| `Сумма конкурсных баллов` | `nsummark` (для БВИ — 0) |
+| `Приоритет` | `npriority_ssp` |
+| `Статус заявления` | `sstatus_ssp` |
+| `Наличие согласия на зачисление в МГУ` | `has_enrollment_consent`: «Да» → true |
+
+### Пример curl
+
+```bash
+curl -k -s "https://cpk.msu.ru/submitted/bachelor/dep_10" \
+  -H "User-Agent: Mozilla/5.0 ..." \
+  -H "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+```
+
+---
+
 ## Обработка ошибок (общая)
 
 | Ситуация | Поведение |
@@ -434,6 +488,7 @@ curl -s "https://submitted.rsmu.ru/data/root.json?v=${TS}&_=$((TS+3000))" \
 4. **СЗГМУ Мечникова (СПб)** — Лечебное дело (97 мест), provider szgmu
 5. **Сеченовский университет (Мск)** — Лечебное дело (495) и Педиатрия (31), provider sechenov
 6. **Пироговский университет (Мск)** — Лечебное дело (426) и Педиатрия (283), provider rsmu
+7. **МГУ Ломоносова (Мск)** — Лечебное дело (46), provider cpk_msu, `honors_diploma_points=0`
 
 Идемпотентна: `get_or_create` + обновление `filter_params` / `seats` при расхождении.
 
@@ -450,6 +505,8 @@ curl -s "https://submitted.rsmu.ru/data/root.json?v=${TS}&_=$((TS+3000))" \
 | `apps/admissions/clients/sechenov_client.py` | Клиент Сеченова |
 | `apps/admissions/clients/sechenov_html_parser.py` | Парсер HTML-таблицы Сеченова |
 | `apps/admissions/clients/rsmu_client.py` | Клиент Пироговского (RSMU) |
+| `apps/admissions/clients/cpk_msu_client.py` | Клиент МГУ |
+| `apps/admissions/clients/cpk_msu_html_parser.py` | Парсер HTML-таблиц МГУ |
 | `apps/admissions/clients/factory.py` | Выбор клиента по provider |
 | `apps/admissions/clients/parsers.py` | Парсинг row → ApplicantProfile |
 | `apps/admissions/services/sync_service.py` | Оркестрация синхронизации |
