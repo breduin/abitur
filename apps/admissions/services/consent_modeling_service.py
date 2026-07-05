@@ -144,51 +144,26 @@ def _load_applications() -> tuple[
     return by_abiturient, directions, universities
 
 
-def _is_passing(entry: ApplicationEntry) -> bool:
-    if entry.seats is None or entry.seats <= 0:
-        return False
-    return entry.position <= entry.seats
-
-
-def _passing_gap(entry: ApplicationEntry) -> int:
-    seats = entry.seats or 0
-    return entry.position - seats
-
-
-def _choose_consent_university(applications: list[ApplicationEntry]) -> int | None:
-    if not applications:
-        return None
-
-    priority_one = [entry for entry in applications if entry.npriority_ssp == 1]
-    if not priority_one:
-        priority_one = applications
-
-    passing = [entry for entry in priority_one if _is_passing(entry)]
-    if passing:
-        best = min(
-            passing,
-            key=lambda entry: (_university_rank(entry.university_name), entry.position),
-        )
-        return best.university_id
-
-    best = min(
-        priority_one,
-        key=lambda entry: (_passing_gap(entry), _university_rank(entry.university_name)),
+def _sorted_universities_by_rank(
+    universities: dict[int, MedicalUniversity],
+) -> list[MedicalUniversity]:
+    return sorted(
+        universities.values(),
+        key=lambda university: (_university_rank(university.name), university.name),
     )
-    return best.university_id
 
 
-def _build_competitive_lists(
+def _build_university_competitive(
+    university_id: int,
     by_abiturient: dict[str, list[ApplicationEntry]],
-    consent_by_abiturient: dict[str, int],
+    locked_abiturient_ids: set[str],
 ) -> dict[int, list[ApplicationEntry]]:
     competitive: dict[int, list[ApplicationEntry]] = defaultdict(list)
     for abiturient_id, applications in by_abiturient.items():
-        consent_university_id = consent_by_abiturient.get(abiturient_id)
-        if consent_university_id is None:
+        if abiturient_id in locked_abiturient_ids:
             continue
         for entry in applications:
-            if entry.university_id == consent_university_id:
+            if entry.university_id == university_id:
                 competitive[entry.direction_id].append(entry)
 
     for direction_id, entries in competitive.items():
@@ -323,20 +298,24 @@ def _serialize_competitive_lists(
 def compute_consent_model() -> dict[str, Any]:
     by_abiturient, directions, universities = _load_applications()
 
-    consent_by_abiturient: dict[str, int] = {}
-    for abiturient_id, applications in by_abiturient.items():
-        consent_university_id = _choose_consent_university(applications)
-        if consent_university_id is not None:
-            consent_by_abiturient[abiturient_id] = consent_university_id
-
-    competitive = _build_competitive_lists(by_abiturient, consent_by_abiturient)
-
     directions_by_university: dict[int, list[StudyDirection]] = defaultdict(list)
     for direction in directions.values():
         directions_by_university[direction.university_id].append(direction)
 
+    locked_abiturient_ids: set[str] = set()
+    consent_by_abiturient: dict[str, int] = {}
+    competitive: dict[int, list[ApplicationEntry]] = {}
     enrolled_by_direction: dict[int, list[ApplicationEntry]] = defaultdict(list)
-    for university_id, university_directions in directions_by_university.items():
+
+    for university in _sorted_universities_by_rank(universities):
+        university_competitive = _build_university_competitive(
+            university.id,
+            by_abiturient,
+            locked_abiturient_ids,
+        )
+        competitive.update(university_competitive)
+
+        university_directions = directions_by_university[university.id]
         lech_direction = next(
             (direction for direction in university_directions if direction.name == LECH_DIRECTION_NAME),
             None,
@@ -348,10 +327,16 @@ def compute_consent_model() -> dict[str, Any]:
         university_enrollment = _enroll_university_directions(
             lech_direction,
             ped_direction,
-            competitive,
+            university_competitive,
         )
+
         for direction_id, entries in university_enrollment.items():
             enrolled_by_direction[direction_id] = entries
+            for entry in entries:
+                if entry.abiturient_id in locked_abiturient_ids:
+                    continue
+                locked_abiturient_ids.add(entry.abiturient_id)
+                consent_by_abiturient[entry.abiturient_id] = university.id
 
     cutoff_scores = []
     for direction in sorted(directions.values(), key=lambda item: (item.university.name, item.name)):
@@ -458,7 +443,7 @@ def get_user_consent_projection(
         ):
             status = "admitted_other_direction"
             status_label = f"Зачисление: {enrolled_elsewhere_name}"
-        elif profile and user_consent_university_id != university.id:
+        elif profile and user_consent_university_id is not None and user_consent_university_id != university.id:
             status = "consent_other_university"
             status_label = f"Согласие в {user_consent_university_name or 'другом вузе'}"
         elif competitive_position is not None:
