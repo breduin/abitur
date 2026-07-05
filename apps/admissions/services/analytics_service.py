@@ -111,6 +111,43 @@ def _groups_for_direction(
     }
 
 
+def _build_full_spb_coverage(
+    profiles_by_direction: dict[int, set[str]],
+    spb_directions: list[StudyDirection],
+    all_directions: list[StudyDirection],
+) -> dict[str, Any]:
+    spb_direction_ids = [direction.id for direction in spb_directions]
+
+    if spb_direction_ids:
+        full_spb_applicants = set.intersection(
+            *(profiles_by_direction.get(direction_id, set()) for direction_id in spb_direction_ids)
+        )
+    else:
+        full_spb_applicants = set()
+
+    direction_stats = []
+    for direction in all_directions:
+        abiturient_ids = profiles_by_direction.get(direction.id, set())
+        count = len(full_spb_applicants & abiturient_ids)
+        total = len(abiturient_ids)
+        direction_stats.append(
+            {
+                "university_name": direction.university.name,
+                "direction_name": direction.name,
+                "city": direction.university.city,
+                "direction_total": total,
+                "count": count,
+                "percent": _percent(count, total),
+            }
+        )
+
+    return {
+        "total": len(full_spb_applicants),
+        "spb_directions_count": len(spb_direction_ids),
+        "directions": direction_stats,
+    }
+
+
 def compute_analytics() -> dict[str, Any]:
     abiturient_group, overall = _build_abiturient_groups()
 
@@ -125,10 +162,19 @@ def compute_analytics() -> dict[str, Any]:
     ).values_list("direction_id", "abiturient_id"):
         profiles_by_direction[direction_id].add(abiturient_id)
 
+    all_directions = list(
+        StudyDirection.objects.filter(
+            university__is_active=True,
+        ).select_related("university").order_by("university__name", "name")
+    )
+    spb_directions = [
+        direction
+        for direction in all_directions
+        if direction.university.city == MedicalUniversity.City.SPB
+    ]
+
     directions_payload = []
-    for direction in StudyDirection.objects.filter(
-        university__is_active=True,
-    ).select_related("university").order_by("university__name", "name"):
+    for direction in all_directions:
         university = direction.university
         abiturient_ids = profiles_by_direction.get(direction.id, set())
         groups = _groups_for_direction(university.city, abiturient_ids, abiturient_group)
@@ -152,6 +198,12 @@ def compute_analytics() -> dict[str, Any]:
             }
         )
 
+    full_spb_coverage = _build_full_spb_coverage(
+        profiles_by_direction,
+        spb_directions,
+        all_directions,
+    )
+
     return {
         "computed_at": timezone.now().isoformat(),
         "overall": {
@@ -160,6 +212,7 @@ def compute_analytics() -> dict[str, Any]:
             GROUP_MUSCOVITES: overall[GROUP_MUSCOVITES].as_dict(),
             GROUP_VISITORS: overall[GROUP_VISITORS].as_dict(),
         },
+        "full_spb_coverage": full_spb_coverage,
         "directions": directions_payload,
     }
 

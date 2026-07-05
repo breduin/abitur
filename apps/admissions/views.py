@@ -113,6 +113,9 @@ def analytics_view(request):
         snapshot = AnalyticsSnapshot.objects.order_by("-computed_at").first()
 
     payload = snapshot.payload if snapshot else None
+    if payload and "full_spb_coverage" not in payload:
+        payload = save_analytics_snapshot()
+        snapshot = AnalyticsSnapshot.objects.order_by("-computed_at").first()
 
     return render(
         request,

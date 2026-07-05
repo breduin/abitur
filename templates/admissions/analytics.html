@@ -74,6 +74,47 @@
 
 <div class="card shadow-sm mb-4">
     <div class="card-header bg-primary-custom text-white">
+        <h2 class="h5 mb-0">Подали во все направления СПб</h2>
+    </div>
+    <div class="card-body pb-2">
+        <p class="mb-1">
+            <strong>{{ analytics.full_spb_coverage.total }}</strong>
+            абитуриентов подали заявления во все
+            <strong>{{ analytics.full_spb_coverage.spb_directions_count }}</strong>
+            направлений петербургских вузов.
+        </p>
+        <p class="text-muted small mb-0">
+            Ниже — сколько из этой группы есть в списке каждого направления и их доля среди абитуриентов направления.
+        </p>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>Медицинский университет</th>
+                    <th>Направление</th>
+                    <th>Абитуриентов в списке</th>
+                    <th>Из группы «все СПб»</th>
+                    <th>Доля в направлении</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in analytics.full_spb_coverage.directions %}
+                <tr>
+                    <td>{{ row.university_name }}</td>
+                    <td>{{ row.direction_name }}</td>
+                    <td>{{ row.direction_total }}</td>
+                    <td>{{ row.count }}</td>
+                    <td>{{ row.percent }}%</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-primary-custom text-white">
         <h2 class="h5 mb-0">Направления: места и заявления</h2>
     </div>
     <div class="table-responsive">

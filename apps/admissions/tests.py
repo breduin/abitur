@@ -935,6 +935,53 @@ class AnalyticsServiceTests(TestCase):
         self.assertIn(GROUP_VISITORS, msk_groups)
         self.assertNotIn(GROUP_PETERSBURGHERS, msk_groups)
 
+    def test_full_spb_coverage(self):
+        spb_uni_2 = MedicalUniversity.objects.create(
+            name="SPB Test 2",
+            city=MedicalUniversity.City.SPB,
+        )
+        spb_direction_2 = StudyDirection.objects.create(
+            university=spb_uni_2,
+            name="Педиатрия",
+            filter_params={},
+            seats=5,
+        )
+
+        for direction, abiturient_id, position in [
+            (self.spb_direction, "2001", 1),
+            (spb_direction_2, "2001", 1),
+            (self.spb_direction, "2002", 2),
+            (self.msk_direction, "2001", 1),
+        ]:
+            ApplicantProfile.objects.create(
+                direction=direction,
+                abiturient_id=abiturient_id,
+                position=position,
+                sstatus_ssp="Участвует",
+                nsummark=300,
+                npriority_ssp=1,
+            )
+
+        payload = save_analytics_snapshot()
+        coverage = payload["full_spb_coverage"]
+        self.assertEqual(coverage["spb_directions_count"], 2)
+        self.assertEqual(coverage["total"], 1)
+
+        by_key = {
+            (row["university_name"], row["direction_name"]): row
+            for row in coverage["directions"]
+        }
+        spb_row = by_key[(self.spb_uni.name, "Лечебное дело")]
+        spb_row_2 = by_key[(spb_uni_2.name, "Педиатрия")]
+        msk_row = by_key[(self.msk_uni.name, "Лечебное дело")]
+
+        self.assertEqual(spb_row["count"], 1)
+        self.assertEqual(spb_row["percent"], 50.0)
+        self.assertEqual(spb_row_2["count"], 1)
+        self.assertEqual(spb_row_2["percent"], 100.0)
+        self.assertEqual(msk_row["count"], 1)
+        self.assertEqual(msk_row["percent"], 100.0)
+
     def test_analytics_page_requires_login(self):
         response = self.client.get("/analytics/")
         self.assertEqual(response.status_code, 302)
