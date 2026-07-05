@@ -102,6 +102,8 @@ def _build_chart_data(payload: dict | None) -> dict | None:
             },
         ],
         "directions": payload.get("directions") or [],
+        "fullSpbCoverage": (payload.get("full_spb_coverage") or {}).get("directions") or [],
+        "spbLechCoverage": (payload.get("spb_lech_coverage") or {}).get("directions") or [],
     }
 
 
@@ -113,7 +115,10 @@ def analytics_view(request):
         snapshot = AnalyticsSnapshot.objects.order_by("-computed_at").first()
 
     payload = snapshot.payload if snapshot else None
-    if payload and "full_spb_coverage" not in payload:
+    if payload and (
+        "full_spb_coverage" not in payload
+        or "spb_lech_coverage" not in payload
+    ):
         payload = save_analytics_snapshot()
         snapshot = AnalyticsSnapshot.objects.order_by("-computed_at").first()
 

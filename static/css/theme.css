@@ -261,3 +261,28 @@ body {
     background: rgba(255, 107, 157, 0.16);
     color: #c2417a;
 }
+
+.analytics-coverage-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(260px, 1fr);
+    gap: 1.5rem;
+    align-items: start;
+    padding: 0 1.5rem 1.5rem;
+}
+
+@media (max-width: 991.98px) {
+    .analytics-coverage-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+.analytics-coverage-chart {
+    min-height: 280px;
+    height: clamp(280px, 42vw, 420px);
+}
+
+.analytics-coverage-legend {
+    display: grid;
+    gap: 0.75rem;
+    align-content: start;
+}

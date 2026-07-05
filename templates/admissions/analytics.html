@@ -72,7 +72,7 @@
     </div>
 </div>
 
-<div class="card shadow-sm mb-4">
+<div class="card shadow-sm mb-4 overflow-hidden">
     <div class="card-header bg-primary-custom text-white">
         <h2 class="h5 mb-0">Подали во все направления СПб</h2>
     </div>
@@ -80,36 +80,72 @@
         <p class="mb-1">
             <strong>{{ analytics.full_spb_coverage.total }}</strong>
             абитуриентов подали заявления во все
-            <strong>{{ analytics.full_spb_coverage.spb_directions_count }}</strong>
+            <strong>{{ analytics.full_spb_coverage.directions_count }}</strong>
             направлений петербургских вузов.
         </p>
         <p class="text-muted small mb-0">
-            Ниже — сколько из этой группы есть в списке каждого направления и их доля среди абитуриентов направления.
+            Доля группы «все СПб» среди абитуриентов каждого направления.
         </p>
     </div>
-    <div class="table-responsive">
-        <table class="table table-hover mb-0">
-            <thead>
-                <tr>
-                    <th>Медицинский университет</th>
-                    <th>Направление</th>
-                    <th>Абитуриентов в списке</th>
-                    <th>Из группы «все СПб»</th>
-                    <th>Доля в направлении</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for row in analytics.full_spb_coverage.directions %}
-                <tr>
-                    <td>{{ row.university_name }}</td>
-                    <td>{{ row.direction_name }}</td>
-                    <td>{{ row.direction_total }}</td>
-                    <td>{{ row.count }}</td>
-                    <td>{{ row.percent }}%</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+    <div class="analytics-coverage-layout">
+        <div class="analytics-coverage-chart">
+            <canvas id="full-spb-coverage-chart" aria-label="Доля группы «все СПб» по направлениям"></canvas>
+        </div>
+        <div class="analytics-coverage-legend">
+            {% for row in analytics.full_spb_coverage.directions %}
+            <div class="analytics-legend-item">
+                <span class="analytics-legend-dot" style="background:#4DA6FF;"></span>
+                <div>
+                    <div class="analytics-legend-title">{{ row.university_name }}</div>
+                    <div class="analytics-legend-meta">
+                        {{ row.direction_name }} ·
+                        <strong>{{ row.count }}</strong> из {{ row.direction_total }}
+                        · {{ row.percent }}%
+                    </div>
+                </div>
+            </div>
+            {% empty %}
+            <p class="text-muted small mb-0">Нет данных по направлениям СПб.</p>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4 overflow-hidden">
+    <div class="card-header bg-primary-custom text-white">
+        <h2 class="h5 mb-0">Подали на «Лечебное дело» во всех СПб вузах</h2>
+    </div>
+    <div class="card-body pb-2">
+        <p class="mb-1">
+            <strong>{{ analytics.spb_lech_coverage.total }}</strong>
+            абитуриентов есть в списках «Лечебное дело» у всех
+            <strong>{{ analytics.spb_lech_coverage.directions_count }}</strong>
+            петербургских вузов, где это направление отслеживается.
+        </p>
+        <p class="text-muted small mb-0">
+            Доля этой группы среди абитуриентов «Лечебное дело» в каждом вузе.
+        </p>
+    </div>
+    <div class="analytics-coverage-layout">
+        <div class="analytics-coverage-chart">
+            <canvas id="spb-lech-coverage-chart" aria-label="Доля группы «Лечебное дело во всех СПб» по вузам"></canvas>
+        </div>
+        <div class="analytics-coverage-legend">
+            {% for row in analytics.spb_lech_coverage.directions %}
+            <div class="analytics-legend-item">
+                <span class="analytics-legend-dot" style="background:#2563a8;"></span>
+                <div>
+                    <div class="analytics-legend-title">{{ row.university_name }}</div>
+                    <div class="analytics-legend-meta">
+                        <strong>{{ row.count }}</strong> из {{ row.direction_total }}
+                        · {{ row.percent }}%
+                    </div>
+                </div>
+            </div>
+            {% empty %}
+            <p class="text-muted small mb-0">Нет данных по «Лечебному делу» в СПб.</p>
+            {% endfor %}
+        </div>
     </div>
 </div>
 
@@ -315,6 +351,80 @@
         }
         renderDonut(canvas, direction.groups || [], "62%");
     });
+
+    function renderCoverageBarChart(canvas, rows, color) {
+        const labels = (rows || []).map((row) => row.university_name);
+        const percents = (rows || []).map((row) => Number(row.percent) || 0);
+        const counts = (rows || []).map((row) => Number(row.count) || 0);
+        const totals = (rows || []).map((row) => Number(row.direction_total) || 0);
+
+        if (!labels.length) {
+            labels.push("Нет данных");
+            percents.push(0);
+            counts.push(0);
+            totals.push(0);
+        }
+
+        return new Chart(canvas, {
+            type: "bar",
+            data: {
+                labels,
+                datasets: [{
+                    label: "Доля в направлении, %",
+                    data: percents,
+                    backgroundColor: color,
+                    borderRadius: 8,
+                    maxBarThickness: 28,
+                }],
+            },
+            options: {
+                indexAxis: "y",
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: "#0f2d4d",
+                        titleFont: { size: 13, weight: "700" },
+                        bodyFont: { size: 12 },
+                        padding: 12,
+                        cornerRadius: 10,
+                        callbacks: {
+                            label(context) {
+                                const index = context.dataIndex;
+                                return ` ${counts[index]} из ${totals[index]} · ${percents[index]}%`;
+                            },
+                        },
+                    },
+                },
+                scales: {
+                    x: {
+                        beginAtZero: true,
+                        max: 100,
+                        ticks: {
+                            callback(value) {
+                                return `${value}%`;
+                            },
+                        },
+                        grid: { color: "rgba(77, 166, 255, 0.12)" },
+                    },
+                    y: {
+                        grid: { display: false },
+                    },
+                },
+            },
+        });
+    }
+
+    const fullSpbChart = document.getElementById("full-spb-coverage-chart");
+    if (fullSpbChart) {
+        renderCoverageBarChart(fullSpbChart, chartData.fullSpbCoverage, "#4DA6FF");
+    }
+
+    const spbLechChart = document.getElementById("spb-lech-coverage-chart");
+    if (spbLechChart) {
+        renderCoverageBarChart(spbLechChart, chartData.spbLechCoverage, "#2563a8");
+    }
 })();
 </script>
 

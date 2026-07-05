@@ -111,30 +111,31 @@ def _groups_for_direction(
     }
 
 
-def _build_full_spb_coverage(
-    profiles_by_direction: dict[int, set[str]],
-    spb_directions: list[StudyDirection],
-    all_directions: list[StudyDirection],
-) -> dict[str, Any]:
-    spb_direction_ids = [direction.id for direction in spb_directions]
+LECH_DIRECTION_NAME = "Лечебное дело"
 
-    if spb_direction_ids:
-        full_spb_applicants = set.intersection(
-            *(profiles_by_direction.get(direction_id, set()) for direction_id in spb_direction_ids)
+
+def _build_spb_direction_coverage(
+    profiles_by_direction: dict[int, set[str]],
+    target_directions: list[StudyDirection],
+) -> dict[str, Any]:
+    direction_ids = [direction.id for direction in target_directions]
+
+    if direction_ids:
+        covered_applicants = set.intersection(
+            *(profiles_by_direction.get(direction_id, set()) for direction_id in direction_ids)
         )
     else:
-        full_spb_applicants = set()
+        covered_applicants = set()
 
     direction_stats = []
-    for direction in all_directions:
+    for direction in target_directions:
         abiturient_ids = profiles_by_direction.get(direction.id, set())
-        count = len(full_spb_applicants & abiturient_ids)
+        count = len(covered_applicants & abiturient_ids)
         total = len(abiturient_ids)
         direction_stats.append(
             {
                 "university_name": direction.university.name,
                 "direction_name": direction.name,
-                "city": direction.university.city,
                 "direction_total": total,
                 "count": count,
                 "percent": _percent(count, total),
@@ -142,8 +143,8 @@ def _build_full_spb_coverage(
         )
 
     return {
-        "total": len(full_spb_applicants),
-        "spb_directions_count": len(spb_direction_ids),
+        "total": len(covered_applicants),
+        "directions_count": len(direction_ids),
         "directions": direction_stats,
     }
 
@@ -172,6 +173,11 @@ def compute_analytics() -> dict[str, Any]:
         for direction in all_directions
         if direction.university.city == MedicalUniversity.City.SPB
     ]
+    spb_lech_directions = [
+        direction
+        for direction in spb_directions
+        if direction.name == LECH_DIRECTION_NAME
+    ]
 
     directions_payload = []
     for direction in all_directions:
@@ -198,10 +204,13 @@ def compute_analytics() -> dict[str, Any]:
             }
         )
 
-    full_spb_coverage = _build_full_spb_coverage(
+    full_spb_coverage = _build_spb_direction_coverage(
         profiles_by_direction,
         spb_directions,
-        all_directions,
+    )
+    spb_lech_coverage = _build_spb_direction_coverage(
+        profiles_by_direction,
+        spb_lech_directions,
     )
 
     return {
@@ -213,6 +222,7 @@ def compute_analytics() -> dict[str, Any]:
             GROUP_VISITORS: overall[GROUP_VISITORS].as_dict(),
         },
         "full_spb_coverage": full_spb_coverage,
+        "spb_lech_coverage": spb_lech_coverage,
         "directions": directions_payload,
     }
 
