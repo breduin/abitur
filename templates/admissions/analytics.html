@@ -173,12 +173,17 @@
     </div>
 </div>
 
-{{ analytics.overall|json_script:"analytics-overall" }}
-{{ analytics.directions|json_script:"analytics-directions" }}
+{{ chart_data|json_script:"analytics-chart-data" }}
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 <script>
 (() => {
+    const chartDataEl = document.getElementById("analytics-chart-data");
+    if (!chartDataEl || typeof Chart === "undefined") {
+        return;
+    }
+
+    const chartData = JSON.parse(chartDataEl.textContent);
     const GROUP_COLORS = {
         petersburgers: "#4DA6FF",
         muscovites: "#2563a8",
@@ -214,58 +219,25 @@
         const labels = [];
         const data = [];
         const colors = [];
-        for (const group of groups) {
-            if (!group.count) continue;
+        for (const group of groups || []) {
+            const count = Number(group.count) || 0;
+            if (count <= 0) continue;
             labels.push(group.label);
-            data.push(group.count);
+            data.push(count);
             colors.push(GROUP_COLORS[group.key] || "#94a3b8");
         }
         return { labels, data, colors };
     }
 
-    const overall = JSON.parse(document.getElementById("analytics-overall").textContent);
-    const directions = JSON.parse(document.getElementById("analytics-directions").textContent);
-
-    const overallGroups = [
-        { key: "petersburgers", label: "Петербуржцы", count: overall.petersburgers.count },
-        { key: "muscovites", label: "Москвичи", count: overall.muscovites.count },
-        { key: "visitors", label: "Приезжие", count: overall.visitors.count },
-    ];
-    const overallDataset = buildDataset(overallGroups);
-
-    new Chart(document.getElementById("overall-donut"), {
-        type: "doughnut",
-        data: {
-            labels: overallDataset.labels,
-            datasets: [{
-                data: overallDataset.data,
-                backgroundColor: overallDataset.colors,
-                borderWidth: 0,
-                hoverOffset: 8,
-                borderRadius: 6,
-            }],
-        },
-        options: {
-            ...doughnutDefaults,
-            animation: {
-                animateRotate: true,
-                duration: 900,
-                easing: "easeOutQuart",
-            },
-        },
-    });
-
-    document.querySelectorAll(".direction-donut").forEach((canvas) => {
-        const index = Number(canvas.dataset.directionIndex);
-        const direction = directions[index];
-        const dataset = buildDataset(direction.groups || []);
+    function renderDonut(canvas, groups, cutout) {
+        const dataset = buildDataset(groups);
         if (!dataset.data.length) {
-            canvas.parentElement.innerHTML =
-                '<div class="text-muted small text-center py-4">Нет данных</div>';
-            return;
+            dataset.labels = ["Нет данных"];
+            dataset.data = [1];
+            dataset.colors = ["#e2e8f0"];
         }
 
-        new Chart(canvas, {
+        return new Chart(canvas, {
             type: "doughnut",
             data: {
                 labels: dataset.labels,
@@ -273,20 +245,34 @@
                     data: dataset.data,
                     backgroundColor: dataset.colors,
                     borderWidth: 0,
-                    hoverOffset: 6,
-                    borderRadius: 5,
+                    hoverOffset: 8,
+                    borderRadius: 6,
                 }],
             },
             options: {
                 ...doughnutDefaults,
-                cutout: "62%",
+                cutout,
                 animation: {
                     animateRotate: true,
-                    duration: 700,
+                    duration: 800,
                     easing: "easeOutQuart",
                 },
             },
         });
+    }
+
+    const overallCanvas = document.getElementById("overall-donut");
+    if (overallCanvas) {
+        renderDonut(overallCanvas, chartData.overallGroups, "68%");
+    }
+
+    document.querySelectorAll(".direction-donut").forEach((canvas) => {
+        const index = Number(canvas.dataset.directionIndex);
+        const direction = (chartData.directions || [])[index];
+        if (!direction) {
+            return;
+        }
+        renderDonut(canvas, direction.groups || [], "62%");
     });
 })();
 </script>

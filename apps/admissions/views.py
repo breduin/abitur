@@ -74,6 +74,37 @@ def refresh_status_partial(request):
     })
 
 
+def _build_chart_data(payload: dict | None) -> dict | None:
+    if not payload:
+        return None
+
+    overall = payload.get("overall") or {}
+    return {
+        "total": overall.get("total", 0),
+        "overallGroups": [
+            {
+                "key": GROUP_PETERSBURGHERS,
+                "label": GROUP_LABELS[GROUP_PETERSBURGHERS],
+                "count": (overall.get(GROUP_PETERSBURGHERS) or {}).get("count", 0),
+                "percent": (overall.get(GROUP_PETERSBURGHERS) or {}).get("percent", 0),
+            },
+            {
+                "key": GROUP_MUSCOVITES,
+                "label": GROUP_LABELS[GROUP_MUSCOVITES],
+                "count": (overall.get(GROUP_MUSCOVITES) or {}).get("count", 0),
+                "percent": (overall.get(GROUP_MUSCOVITES) or {}).get("percent", 0),
+            },
+            {
+                "key": GROUP_VISITORS,
+                "label": GROUP_LABELS[GROUP_VISITORS],
+                "count": (overall.get(GROUP_VISITORS) or {}).get("count", 0),
+                "percent": (overall.get(GROUP_VISITORS) or {}).get("percent", 0),
+            },
+        ],
+        "directions": payload.get("directions") or [],
+    }
+
+
 @login_required
 def analytics_view(request):
     snapshot = AnalyticsSnapshot.objects.order_by("-computed_at").first()
@@ -81,11 +112,14 @@ def analytics_view(request):
         save_analytics_snapshot()
         snapshot = AnalyticsSnapshot.objects.order_by("-computed_at").first()
 
+    payload = snapshot.payload if snapshot else None
+
     return render(
         request,
         "admissions/analytics.html",
         {
-            "analytics": snapshot.payload if snapshot else None,
+            "analytics": payload,
+            "chart_data": _build_chart_data(payload),
             "computed_at": snapshot.computed_at if snapshot else None,
             "group_labels": GROUP_LABELS,
             "last_data_update": _get_last_data_update(),
