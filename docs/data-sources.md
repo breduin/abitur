@@ -11,8 +11,10 @@ flowchart LR
     Sync --> Factory[get_university_client]
     Factory --> Client1[1spbgmu POST]
     Factory --> Client2[gpmu GET]
+    Factory --> Client3[almazov POST HTML]
     Client1 --> API1[abit.1spbgmu.ru]
     Client2 --> API2[spiski.gpmu.org]
+    Client3 --> API3[abit.almazovcentre.ru]
     Sync --> DB[(ApplicantProfile)]
 ```
 
@@ -186,6 +188,61 @@ curl "https://spiski.gpmu.org/api/pod/group/kg_16?page=1&page_size=100"
 
 ---
 
+## Provider: `almazov` — Центр Алмазова
+
+**URL:** `https://abit.almazovcentre.ru`
+
+### api_config
+
+```json
+{
+  "provider": "almazov",
+  "base_url": "https://abit.almazovcentre.ru",
+  "list_endpoint": "/wp-content/themes/new-imo-2025/returnNewRanged.php",
+  "referer": "https://abit.almazovcentre.ru/specialty/spec-course/spec-lists/"
+}
+```
+
+### Алгоритм
+
+1. **POST** `list_endpoint` с form-data: `dir`, `file`
+2. Ответ — HTML с таблицей и блоком `Всего мест: N`
+3. Пагинации нет: весь список в одном ответе, порог применяется при обходе строк
+4. CSRF не требуется
+
+### Направления (seed)
+
+| Направление    | file (filter_params) | Места (seed) |
+|----------------|----------------------|--------------|
+| Лечебное дело  | `000000060_31.05.01 Lechebnoe delo (...)_B.txt` | 162 |
+| Педиатрия      | `000000060_31.05.02 Pediatriya (...)_B.txt` | 16 |
+
+**Места:** задаются в seed, при синхронизации обновляются из `<p class='number-places'>Всего мест: N</p>`
+
+### Маппинг полей ответа
+
+| API колонка (рус.) | ApplicantProfile |
+|--------------------|------------------|
+| `Уникальный код` | `abiturient_id` |
+| (порядок в списке) | `position` |
+| `Сумма баллов` | `nsummark` |
+| `Приоритет` | `npriority_ssp` |
+| `Текущий статус конкурса` | `sstatus_ssp` |
+| `Согласие на зачисление` / `Состояние договора` | `has_enrollment_consent`: `✓` → true |
+
+### Пример curl
+
+```bash
+curl -X POST "https://abit.almazovcentre.ru/wp-content/themes/new-imo-2025/returnNewRanged.php" \
+  -H "Content-Type: application/x-www-form-urlencoded; charset=UTF-8" \
+  -H "Referer: https://abit.almazovcentre.ru/specialty/spec-course/spec-lists/" \
+  -H "Origin: https://abit.almazovcentre.ru" \
+  -H "X-Requested-With: XMLHttpRequest" \
+  -d "dir=/one_s/spec26/&file=000000060_31.05.01%20Lechebnoe%20delo%20(Osnovnye%20mesta%20v%20ramkakh%20KTsP)_B.txt"
+```
+
+---
+
 ## Обработка ошибок (общая)
 
 | Ситуация | Поведение |
@@ -206,6 +263,7 @@ curl "https://spiski.gpmu.org/api/pod/group/kg_16?page=1&page_size=100"
 
 1. **Первый мед (СПб)** — 2 направления (135 и 15 мест)
 2. **Педиатрический (СПб)** — 2 направления, provider gpmu
+3. **Центр Алмазова** — 2 направления (162 и 16 мест), provider almazov
 
 Идемпотентна: `get_or_create` + обновление `filter_params` / `seats` при расхождении.
 
@@ -215,6 +273,8 @@ curl "https://spiski.gpmu.org/api/pod/group/kg_16?page=1&page_size=100"
 |------|------------|
 | `apps/admissions/clients/university_client.py` | Клиент 1spbgmu |
 | `apps/admissions/clients/gpmu_client.py` | Клиент GPMU |
+| `apps/admissions/clients/almazov_client.py` | Клиент Almazov |
+| `apps/admissions/clients/almazov_html_parser.py` | Парсер HTML-таблицы Almazov |
 | `apps/admissions/clients/factory.py` | Выбор клиента по provider |
 | `apps/admissions/clients/parsers.py` | Парсинг row → ApplicantProfile |
 | `apps/admissions/services/sync_service.py` | Оркестрация синхронизации |

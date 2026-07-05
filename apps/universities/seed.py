@@ -1,5 +1,6 @@
 FIRST_MED_NAME = "Первый мед (СПб)"
 PEDIATRIC_NAME = "Педиатрический (СПб)"
+ALMAZOV_NAME = "Центр Алмазова"
 
 FIRST_MED_API_CONFIG = {
     "provider": "1spbgmu",
@@ -46,6 +47,32 @@ PEDIATRIC_DIRECTIONS = [
     {
         "name": "Педиатрия",
         "filter_params": {"group_id": "kg_16"},
+    },
+]
+
+ALMAZOV_API_CONFIG = {
+    "provider": "almazov",
+    "base_url": "https://abit.almazovcentre.ru",
+    "list_endpoint": "/wp-content/themes/new-imo-2025/returnNewRanged.php",
+    "referer": "https://abit.almazovcentre.ru/specialty/spec-course/spec-lists/",
+}
+
+ALMAZOV_DIRECTIONS = [
+    {
+        "name": "Лечебное дело",
+        "seats": 162,
+        "filter_params": {
+            "dir": "/one_s/spec26/",
+            "file": "000000060_31.05.01 Lechebnoe delo (Osnovnye mesta v ramkakh KTsP)_B.txt",
+        },
+    },
+    {
+        "name": "Педиатрия",
+        "seats": 16,
+        "filter_params": {
+            "dir": "/one_s/spec26/",
+            "file": "000000060_31.05.02 Pediatriya (Osnovnye mesta v ramkakh KTsP)_B.txt",
+        },
     },
 ]
 
@@ -97,6 +124,17 @@ def ensure_pediatric_seed():
     _ensure_university_directions(university, PEDIATRIC_API_CONFIG, PEDIATRIC_DIRECTIONS)
 
 
+def ensure_almazov_seed():
+    from apps.universities.models import MedicalUniversity
+
+    university, _ = MedicalUniversity.objects.get_or_create(
+        name=ALMAZOV_NAME,
+        defaults={"api_config": ALMAZOV_API_CONFIG},
+    )
+    _ensure_university_directions(university, ALMAZOV_API_CONFIG, ALMAZOV_DIRECTIONS)
+
+
 def ensure_seed_data():
     ensure_first_med_seed()
     ensure_pediatric_seed()
+    ensure_almazov_seed()

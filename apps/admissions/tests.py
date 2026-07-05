@@ -1,6 +1,8 @@
 from django.test import SimpleTestCase, TestCase, override_settings
 from unittest.mock import MagicMock, patch
 
+from apps.admissions.clients.almazov_client import AlmazovClient
+from apps.admissions.clients.almazov_html_parser import parse_seats, parse_table, rows_to_dicts
 from apps.admissions.clients.base import RateLimitError
 from apps.admissions.clients.gpmu_client import GPMUClient
 from apps.admissions.clients.parsed import ParsedApplicantRow
@@ -276,6 +278,62 @@ class GPMUClientTests(SimpleTestCase):
         self.assertEqual(rows[0]["Уникальный код"], "1")
         self.assertEqual(rows[1]["Уникальный код"], "2")
         self.assertEqual(client.last_seats, 52)
+
+
+ALMAZOV_SAMPLE_HTML = """
+<p class='number-places'>Всего мест: 162</p>
+<table id='table-list'>
+<tr class='original'><th>№</th><th>Уникальный код</th><th>Приоритет</th><th>БВИ </th>
+<th>Сумма баллов</th><th>Сумма баллов по предметам</th><th>Биология</th><th>Химия</th>
+<th>Русский язык</th><th>ВИ (Биология)</th><th>ВИ (Химия)</th><th>ВИ (Русский язык)</th>
+<th>Сумма баллов за общие инд.дост.</th><th>Сумма баллов за инд.дост.</th>
+<th>Сумма баллов за целевые инд.дост.</th><th>Текущий статус конкурса</th>
+<th>Номер предложения</th><th>Состояние договора</th><th>Согласие на зачисление</th>
+<th>Дата заявления</th></tr>
+<tr class='copy'><td>1</td><td>1198285</td><td>1</td><td></td><td>304</td><td>294</td>
+<td>100</td><td>100</td><td>94</td><td>ЕГЭ</td><td>ЕГЭ</td><td>ЕГЭ</td><td>10</td><td>10</td>
+<td> 0</td><td>Участвует в конкурсе</td><td></td><td></td><td></td><td>30.06.2026</td></tr>
+<td>3</td><td>1107909</td><td>1</td><td></td><td>303</td><td>293</td><td>96</td><td>100</td>
+<td>97</td><td>ЕГЭ</td><td>ЕГЭ</td><td>ЕГЭ</td><td>10</td><td>10</td><td> 0</td>
+<td>Участвует в конкурсе</td><td></td><td></td><td>✓</td><td>03.07.2026</td></tr>
+<tr class='copy'><td>4</td><td>1183513</td><td>1</td><td></td><td>199</td><td>190</td>
+<td>100</td><td>100</td><td>90</td><td>ЕГЭ</td><td>ЕГЭ</td><td>ЕГЭ</td><td>9</td><td>9</td>
+<td> 0</td><td>На рассмотрении</td><td></td><td></td><td></td><td>01.07.2026</td></tr>
+</table>
+"""
+
+
+class AlmazovClientTests(SimpleTestCase):
+    def test_parse_seats(self):
+        self.assertEqual(parse_seats(ALMAZOV_SAMPLE_HTML), 162)
+
+    def test_parse_table_handles_broken_rows(self):
+        headers, rows = parse_table(ALMAZOV_SAMPLE_HTML)
+        self.assertEqual(headers[1], "Уникальный код")
+        self.assertEqual(len(rows), 3)
+        self.assertEqual(rows[0][1], "1198285")
+        self.assertEqual(rows[1][1], "1107909")
+
+    def test_from_almazov_row_parses_valid_data(self):
+        headers, rows = parse_table(ALMAZOV_SAMPLE_HTML)
+        row = rows_to_dicts(headers, rows)[1]
+        row["_position"] = 2
+        parsed = ParsedApplicantRow.from_almazov_row(row, position=2)
+        self.assertIsNotNone(parsed)
+        self.assertEqual(parsed.abiturient_id, "1107909")
+        self.assertEqual(parsed.nsummark, 303)
+        self.assertEqual(parsed.sstatus_ssp, "Участвует в конкурсе")
+        self.assertTrue(parsed.has_enrollment_consent)
+
+    @patch("apps.admissions.clients.almazov_client.AlmazovClient.fetch_list_html")
+    def test_fetch_stops_at_threshold(self, mock_html):
+        mock_html.return_value = ALMAZOV_SAMPLE_HTML
+        client = AlmazovClient({"base_url": "https://abit.almazovcentre.ru"})
+        rows = list(client.fetch_all_above_threshold({}, min_score=200))
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0]["Уникальный код"], "1198285")
+        self.assertEqual(rows[1]["Уникальный код"], "1107909")
+        self.assertEqual(client.last_seats, 162)
 
 
 class AuthTests(TestCase):

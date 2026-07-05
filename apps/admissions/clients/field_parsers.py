@@ -29,6 +29,12 @@ def parse_gpmu_enrollment_consent(row: dict[str, Any]) -> bool:
     )
 
 
+def parse_almazov_enrollment_consent(row: dict[str, Any]) -> bool:
+    return is_checkmark(row.get("Согласие на зачисление")) or is_checkmark(
+        row.get("Состояние договора")
+    )
+
+
 def parse_first_med_enrollment_consent(row: dict[str, Any]) -> bool:
     value = row.get("ncons4enr")
     if isinstance(value, bool):
