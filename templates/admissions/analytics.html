@@ -18,47 +18,56 @@
 </div>
 {% else %}
 
-<div class="card shadow-sm mb-4">
+<div class="card shadow-sm mb-4 overflow-hidden">
     <div class="card-header bg-primary-custom text-white">
         <h2 class="h5 mb-0">Сводка по группам абитуриентов</h2>
     </div>
-    <div class="table-responsive">
-        <table class="table table-hover mb-0">
-            <thead>
-                <tr>
-                    <th>Группа</th>
-                    <th>Количество</th>
-                    <th>Доля</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td>{{ group_labels.petersburgers }}</td>
-                    <td>{{ analytics.overall.petersburgers.count }}</td>
-                    <td>{{ analytics.overall.petersburgers.percent }}%</td>
-                </tr>
-                <tr>
-                    <td>{{ group_labels.muscovites }}</td>
-                    <td>{{ analytics.overall.muscovites.count }}</td>
-                    <td>{{ analytics.overall.muscovites.percent }}%</td>
-                </tr>
-                <tr>
-                    <td>{{ group_labels.visitors }}</td>
-                    <td>{{ analytics.overall.visitors.count }}</td>
-                    <td>{{ analytics.overall.visitors.percent }}%</td>
-                </tr>
-                <tr class="table-light fw-semibold">
-                    <td>Всего уникальных абитуриентов</td>
-                    <td colspan="2">{{ analytics.overall.total }}</td>
-                </tr>
-            </tbody>
-        </table>
+    <div class="analytics-hero">
+        <div class="analytics-donut-shell">
+            <canvas id="overall-donut" aria-label="Распределение абитуриентов по группам"></canvas>
+            <div class="analytics-donut-center">
+                <div class="analytics-donut-center-value">{{ analytics.overall.total }}</div>
+                <div class="analytics-donut-center-label">абитуриентов</div>
+            </div>
+        </div>
+        <div class="analytics-legend">
+            <div class="analytics-legend-item">
+                <span class="analytics-legend-dot" style="background:#4DA6FF;"></span>
+                <div>
+                    <div class="analytics-legend-title">{{ group_labels.petersburgers }}</div>
+                    <div class="analytics-legend-meta">
+                        <strong>{{ analytics.overall.petersburgers.count }}</strong>
+                        · {{ analytics.overall.petersburgers.percent }}%
+                    </div>
+                </div>
+            </div>
+            <div class="analytics-legend-item">
+                <span class="analytics-legend-dot" style="background:#2563a8;"></span>
+                <div>
+                    <div class="analytics-legend-title">{{ group_labels.muscovites }}</div>
+                    <div class="analytics-legend-meta">
+                        <strong>{{ analytics.overall.muscovites.count }}</strong>
+                        · {{ analytics.overall.muscovites.percent }}%
+                    </div>
+                </div>
+            </div>
+            <div class="analytics-legend-item">
+                <span class="analytics-legend-dot" style="background:#FF6B9D;"></span>
+                <div>
+                    <div class="analytics-legend-title">{{ group_labels.visitors }}</div>
+                    <div class="analytics-legend-meta">
+                        <strong>{{ analytics.overall.visitors.count }}</strong>
+                        · {{ analytics.overall.visitors.percent }}%
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
     <div class="card-body border-top py-2">
         <p class="text-muted small mb-0">
-            <strong>Петербуржцы</strong> — подали только в вузы СПб.
-            <strong>Москвичи</strong> — только в московские.
-            <strong>Приезжие</strong> — есть заявки и в СПб, и в Москве.
+            <strong>Петербуржцы</strong> — только вузы СПб.
+            <strong>Москвичи</strong> — только московские.
+            <strong>Приезжие</strong> — заявки и в СПб, и в Москве.
         </p>
     </div>
 </div>
@@ -91,9 +100,39 @@
     </div>
 </div>
 
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-accent text-white">
+        <h2 class="h5 mb-0">Группы по направлениям</h2>
+    </div>
+    <div class="analytics-direction-grid">
+        {% for row in analytics.directions %}
+        <div class="analytics-direction-card">
+            {% if row.city == "spb" %}
+            <span class="analytics-city-badge analytics-city-badge--spb">СПб</span>
+            {% elif row.city == "msk" %}
+            <span class="analytics-city-badge analytics-city-badge--msk">Москва</span>
+            {% endif %}
+            <div class="analytics-direction-card-title">{{ row.university_name }}</div>
+            <div class="analytics-direction-card-subtitle">{{ row.direction_name }}</div>
+            <div class="analytics-mini-donut">
+                <canvas
+                    class="direction-donut"
+                    data-direction-index="{{ forloop.counter0 }}"
+                    aria-label="Группы абитуриентов: {{ row.university_name }}, {{ row.direction_name }}"
+                ></canvas>
+            </div>
+            <div class="analytics-mini-meta">
+                <span>Мест: <strong>{% if row.seats is not None %}{{ row.seats }}{% else %}—{% endif %}</strong></span>
+                <span>В списке: <strong>{{ row.direction_total }}</strong></span>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
 <div class="card shadow-sm">
     <div class="card-header bg-accent text-white">
-        <h2 class="h5 mb-0">Группы по университетам и направлениям</h2>
+        <h2 class="h5 mb-0">Таблица по направлениям</h2>
     </div>
     <div class="table-responsive">
         <table class="table table-hover mb-0">
@@ -133,6 +172,124 @@
         </table>
     </div>
 </div>
+
+{{ analytics.overall|json_script:"analytics-overall" }}
+{{ analytics.directions|json_script:"analytics-directions" }}
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script>
+(() => {
+    const GROUP_COLORS = {
+        petersburgers: "#4DA6FF",
+        muscovites: "#2563a8",
+        visitors: "#FF6B9D",
+    };
+
+    const doughnutDefaults = {
+        responsive: true,
+        maintainAspectRatio: true,
+        cutout: "68%",
+        spacing: 3,
+        plugins: {
+            legend: { display: false },
+            tooltip: {
+                backgroundColor: "#0f2d4d",
+                titleFont: { size: 13, weight: "700" },
+                bodyFont: { size: 12 },
+                padding: 12,
+                cornerRadius: 10,
+                callbacks: {
+                    label(context) {
+                        const value = context.raw || 0;
+                        const total = context.dataset.data.reduce((sum, item) => sum + item, 0);
+                        const percent = total ? Math.round(value * 1000 / total) / 10 : 0;
+                        return ` ${value} · ${percent}%`;
+                    },
+                },
+            },
+        },
+    };
+
+    function buildDataset(groups) {
+        const labels = [];
+        const data = [];
+        const colors = [];
+        for (const group of groups) {
+            if (!group.count) continue;
+            labels.push(group.label);
+            data.push(group.count);
+            colors.push(GROUP_COLORS[group.key] || "#94a3b8");
+        }
+        return { labels, data, colors };
+    }
+
+    const overall = JSON.parse(document.getElementById("analytics-overall").textContent);
+    const directions = JSON.parse(document.getElementById("analytics-directions").textContent);
+
+    const overallGroups = [
+        { key: "petersburgers", label: "Петербуржцы", count: overall.petersburgers.count },
+        { key: "muscovites", label: "Москвичи", count: overall.muscovites.count },
+        { key: "visitors", label: "Приезжие", count: overall.visitors.count },
+    ];
+    const overallDataset = buildDataset(overallGroups);
+
+    new Chart(document.getElementById("overall-donut"), {
+        type: "doughnut",
+        data: {
+            labels: overallDataset.labels,
+            datasets: [{
+                data: overallDataset.data,
+                backgroundColor: overallDataset.colors,
+                borderWidth: 0,
+                hoverOffset: 8,
+                borderRadius: 6,
+            }],
+        },
+        options: {
+            ...doughnutDefaults,
+            animation: {
+                animateRotate: true,
+                duration: 900,
+                easing: "easeOutQuart",
+            },
+        },
+    });
+
+    document.querySelectorAll(".direction-donut").forEach((canvas) => {
+        const index = Number(canvas.dataset.directionIndex);
+        const direction = directions[index];
+        const dataset = buildDataset(direction.groups || []);
+        if (!dataset.data.length) {
+            canvas.parentElement.innerHTML =
+                '<div class="text-muted small text-center py-4">Нет данных</div>';
+            return;
+        }
+
+        new Chart(canvas, {
+            type: "doughnut",
+            data: {
+                labels: dataset.labels,
+                datasets: [{
+                    data: dataset.data,
+                    backgroundColor: dataset.colors,
+                    borderWidth: 0,
+                    hoverOffset: 6,
+                    borderRadius: 5,
+                }],
+            },
+            options: {
+                ...doughnutDefaults,
+                cutout: "62%",
+                animation: {
+                    animateRotate: true,
+                    duration: 700,
+                    easing: "easeOutQuart",
+                },
+            },
+        });
+    });
+})();
+</script>
 
 {% endif %}
 
