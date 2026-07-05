@@ -26,6 +26,9 @@ def dashboard_view(request):
         next_retry_at__isnull=False,
         next_retry_at__gt=timezone.now(),
     ).select_related("direction__university")
+    sync_warnings = MedicalUniversity.objects.filter(
+        is_active=True,
+    ).exclude(sync_warning="")
 
     return render(
         request,
@@ -34,6 +37,7 @@ def dashboard_view(request):
             "current_positions": service.get_current_positions(),
             "forecast_positions": service.get_forecast_positions(),
             "rate_limited_jobs": rate_limited_jobs,
+            "sync_warnings": sync_warnings,
             "last_data_update": _get_last_data_update(),
         },
     )
@@ -55,4 +59,9 @@ def refresh_status_partial(request):
     jobs = SyncJob.objects.filter(
         status=SyncJob.Status.RATE_LIMITED,
     ).select_related("direction__university")
-    return render(request, "admissions/partials/sync_status.html", {"rate_limited_jobs": jobs})
+    return render(request, "admissions/partials/sync_status.html", {
+        "rate_limited_jobs": jobs,
+        "sync_warnings": MedicalUniversity.objects.filter(
+            is_active=True,
+        ).exclude(sync_warning=""),
+    })

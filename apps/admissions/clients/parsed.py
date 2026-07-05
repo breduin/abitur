@@ -7,6 +7,7 @@ from apps.admissions.clients.field_parsers import (
     parse_gpmu_competition_status,
     parse_gpmu_enrollment_consent,
     parse_priority,
+    parse_rsmu_enrollment_consent,
     parse_sechenov_enrollment_consent,
     parse_szgmu_enrollment_consent,
 )
@@ -107,6 +108,29 @@ class ParsedApplicantRow:
             nsummark=nsummark,
             npriority_ssp=parse_priority(row.get("Приоритет")),
             has_enrollment_consent=parse_almazov_enrollment_consent(row),
+            raw_data=row,
+        )
+
+    @classmethod
+    def from_rsmu_row(cls, row: dict[str, Any], position: int) -> "ParsedApplicantRow | None":
+        abiturient_id = str(row.get("title", "")).strip()
+        if not abiturient_id:
+            return None
+
+        try:
+            nsummark = int(row.get("total") or 0)
+        except (TypeError, ValueError):
+            return None
+
+        status = str(row.get("state", "")).strip() or "На рассмотрении"
+
+        return cls(
+            abiturient_id=abiturient_id,
+            position=position,
+            sstatus_ssp=status,
+            nsummark=nsummark,
+            npriority_ssp=parse_priority(row.get("priority")),
+            has_enrollment_consent=parse_rsmu_enrollment_consent(row),
             raw_data=row,
         )
 

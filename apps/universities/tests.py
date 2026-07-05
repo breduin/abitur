@@ -5,6 +5,7 @@ from apps.universities.seed import (
     ALMAZOV_NAME,
     FIRST_MED_NAME,
     PEDIATRIC_NAME,
+    PIROGOV_NAME,
     SECHENOV_NAME,
     SZGMU_NAME,
     ensure_seed_data,
@@ -21,7 +22,8 @@ class SeedTests(TestCase):
         self.assertEqual(MedicalUniversity.objects.filter(name=ALMAZOV_NAME).count(), 1)
         self.assertEqual(MedicalUniversity.objects.filter(name=SZGMU_NAME).count(), 1)
         self.assertEqual(MedicalUniversity.objects.filter(name=SECHENOV_NAME).count(), 1)
-        self.assertEqual(StudyDirection.objects.count(), 9)
+        self.assertEqual(MedicalUniversity.objects.filter(name=PIROGOV_NAME).count(), 1)
+        self.assertEqual(StudyDirection.objects.count(), 11)
 
         first_med = MedicalUniversity.objects.get(name=FIRST_MED_NAME)
         self.assertEqual(first_med.api_config.get("provider"), "1spbgmu")
@@ -66,3 +68,14 @@ class SeedTests(TestCase):
         sechenov_seats = {d.name: d.seats for d in sechenov.directions.all()}
         self.assertEqual(sechenov_seats["Лечебное дело"], 495)
         self.assertEqual(sechenov_seats["Педиатрия"], 31)
+
+        pirogov = MedicalUniversity.objects.get(name=PIROGOV_NAME)
+        self.assertEqual(pirogov.api_config.get("provider"), "rsmu")
+        pirogov_titles = {
+            d.filter_params.get("program_title") for d in pirogov.directions.all()
+        }
+        self.assertIn("Лечебное дело (Лечебное дело) Общий конкурс 2026", pirogov_titles)
+        self.assertIn("Педиатрия Общий конкурс 2026", pirogov_titles)
+        pirogov_seats = {d.name: d.seats for d in pirogov.directions.all()}
+        self.assertEqual(pirogov_seats["Лечебное дело"], 426)
+        self.assertEqual(pirogov_seats["Педиатрия"], 283)

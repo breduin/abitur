@@ -45,6 +45,10 @@ def parse_almazov_enrollment_consent(row: dict[str, Any]) -> bool:
     )
 
 
+def parse_rsmu_enrollment_consent(row: dict[str, Any]) -> bool:
+    return bool(row.get("approval"))
+
+
 def parse_first_med_enrollment_consent(row: dict[str, Any]) -> bool:
     value = row.get("ncons4enr")
     if isinstance(value, bool):

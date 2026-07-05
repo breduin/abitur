@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 
 from apps.admissions.clients.almazov_client import AlmazovClient
 from apps.admissions.clients.almazov_html_parser import parse_seats, parse_table, rows_to_dicts
+from apps.admissions.clients.rsmu_client import RSMUClient
 from apps.admissions.clients.sechenov_client import SechenovClient
 from apps.admissions.clients.sechenov_html_parser import parse_page_rows
 from apps.admissions.clients.szgmu_client import SZGMUClient
@@ -476,6 +477,134 @@ class SechenovClientTests(SimpleTestCase):
         self.assertEqual(len(rows), 5)
         self.assertEqual(rows[-1]["УИД"], "1447524")
         self.assertEqual(client.last_seats, 495)
+
+
+RSMU_ROOT_JSON = [
+    {
+        "title": "Прием на обучение на специалитет - 2026",
+        "file": "p1_spec.json",
+        "showDiplomaAvg": False,
+    },
+]
+
+RSMU_DATES_JSON = [
+    {"title": "04.07.2026 19:00", "file": "p2_1154.json", "showDiplomaAvg": False},
+]
+
+RSMU_PROGRAMS_JSON = [
+    {
+        "title": "Лечебное дело (Лечебное дело) Общий конкурс 2026",
+        "file": "p3_lech.json",
+        "showDiplomaAvg": False,
+    },
+    {
+        "title": "Педиатрия Общий конкурс 2026",
+        "file": "p3_ped.json",
+        "showDiplomaAvg": False,
+    },
+]
+
+RSMU_APPLICANTS_JSON = {
+    "program": "Лечебное дело (Лечебное дело) Общий конкурс 2026",
+    "plan": 426,
+    "count": 5,
+    "applicants": [
+        {
+            "order": 99,
+            "title": "1000001",
+            "total": 0,
+            "priority": 1,
+            "state": "Подано",
+            "approval": False,
+        },
+        {
+            "order": 100,
+            "title": "1000002",
+            "total": 310,
+            "priority": 1,
+            "state": "Подано",
+            "approval": True,
+        },
+        {
+            "order": 101,
+            "title": "1000003",
+            "total": 200,
+            "priority": 2,
+            "state": "Подано",
+            "approval": False,
+        },
+        {
+            "order": 102,
+            "title": "1000004",
+            "total": 199,
+            "priority": 1,
+            "state": "Подано",
+            "approval": False,
+        },
+    ],
+}
+
+
+class RSMUClientTests(SimpleTestCase):
+    def setUp(self):
+        from apps.admissions.clients import rsmu_client
+
+        rsmu_client._NAV_CACHE.clear()
+
+    def test_from_rsmu_row_parses_valid_data(self):
+        row = RSMU_APPLICANTS_JSON["applicants"][1]
+        parsed = ParsedApplicantRow.from_rsmu_row(row, position=2)
+        self.assertEqual(parsed.abiturient_id, "1000002")
+        self.assertEqual(parsed.position, 2)
+        self.assertEqual(parsed.nsummark, 310)
+        self.assertEqual(parsed.npriority_ssp, 1)
+        self.assertTrue(parsed.has_enrollment_consent)
+
+    @patch("apps.admissions.clients.rsmu_client.RSMUClient._fetch_json")
+    def test_fetch_stops_at_threshold_skipping_zero_scores(self, mock_fetch):
+        mock_fetch.side_effect = [
+            RSMU_ROOT_JSON,
+            RSMU_DATES_JSON,
+            RSMU_PROGRAMS_JSON,
+            RSMU_APPLICANTS_JSON,
+        ]
+        client = RSMUClient({"base_url": "https://submitted.rsmu.ru"})
+        rows = list(
+            client.fetch_all_above_threshold(
+                {
+                    "program_title": "Лечебное дело (Лечебное дело) Общий конкурс 2026",
+                    "seats": 426,
+                },
+                min_score=200,
+            )
+        )
+        self.assertEqual(len(rows), 3)
+        self.assertEqual(rows[0]["title"], "1000001")
+        self.assertEqual(rows[0]["_position"], 1)
+        self.assertEqual(rows[-1]["title"], "1000003")
+        self.assertEqual(client.last_seats, 426)
+        self.assertEqual(client.sync_warning, "")
+
+    @patch("apps.admissions.clients.rsmu_client.RSMUClient._fetch_json")
+    def test_multiple_dates_set_sync_warning(self, mock_fetch):
+        mock_fetch.side_effect = [
+            RSMU_ROOT_JSON,
+            [
+                {"title": "04.07.2026 19:00", "file": "p2_a.json"},
+                {"title": "05.07.2026 12:00", "file": "p2_b.json"},
+            ],
+            RSMU_PROGRAMS_JSON,
+            RSMU_APPLICANTS_JSON,
+        ]
+        client = RSMUClient({"base_url": "https://submitted.rsmu.ru"})
+        list(
+            client.fetch_all_above_threshold(
+                {"program_title": "Педиатрия Общий конкурс 2026"},
+                min_score=200,
+            )
+        )
+        self.assertIn("несколько дат списков", client.sync_warning)
+        self.assertIn("04.07.2026 19:00", client.sync_warning)
 
 
 class AuthTests(TestCase):

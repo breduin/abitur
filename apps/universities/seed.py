@@ -3,6 +3,7 @@ PEDIATRIC_NAME = "Педиатрический (СПб)"
 ALMAZOV_NAME = "Центр Алмазова"
 SZGMU_NAME = "СЗГМУ Мечникова (СПб)"
 SECHENOV_NAME = "Сеченовский университет (Мск)"
+PIROGOV_NAME = "Пироговский университет (Мск)"
 
 FIRST_MED_API_CONFIG = {
     "provider": "1spbgmu",
@@ -200,9 +201,47 @@ def ensure_sechenov_seed():
     _ensure_university_directions(university, SECHENOV_API_CONFIG, SECHENOV_DIRECTIONS)
 
 
+PIROGOV_API_CONFIG = {
+    "provider": "rsmu",
+    "base_url": "https://submitted.rsmu.ru",
+    "referer": "https://submitted.rsmu.ru/",
+    "admission_title": "Прием на обучение на специалитет - 2026",
+}
+
+PIROGOV_DIRECTIONS = [
+    {
+        "name": "Лечебное дело",
+        "seats": 426,
+        "filter_params": {
+            "program_title": "Лечебное дело (Лечебное дело) Общий конкурс 2026",
+            "seats": 426,
+        },
+    },
+    {
+        "name": "Педиатрия",
+        "seats": 283,
+        "filter_params": {
+            "program_title": "Педиатрия Общий конкурс 2026",
+            "seats": 283,
+        },
+    },
+]
+
+
+def ensure_pirogov_seed():
+    from apps.universities.models import MedicalUniversity
+
+    university, _ = MedicalUniversity.objects.get_or_create(
+        name=PIROGOV_NAME,
+        defaults={"api_config": PIROGOV_API_CONFIG},
+    )
+    _ensure_university_directions(university, PIROGOV_API_CONFIG, PIROGOV_DIRECTIONS)
+
+
 def ensure_seed_data():
     ensure_first_med_seed()
     ensure_pediatric_seed()
     ensure_almazov_seed()
     ensure_szgmu_seed()
     ensure_sechenov_seed()
+    ensure_pirogov_seed()

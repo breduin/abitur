@@ -83,6 +83,12 @@ def sync_direction(
             direction.seats = client.last_seats
             direction.save(update_fields=["seats"])
 
+        if provider == "rsmu":
+            warning = getattr(client, "sync_warning", "") or ""
+            if university.sync_warning != warning:
+                university.sync_warning = warning
+                university.save(update_fields=["sync_warning"])
+
         job.status = SyncJob.Status.SUCCESS
         job.records_fetched = records
         job.next_retry_at = None

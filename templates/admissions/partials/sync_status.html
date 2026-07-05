@@ -1,3 +1,12 @@
+{% if sync_warnings %}
+<div class="alert alert-warning">
+    <ul class="mb-0">
+        {% for university in sync_warnings %}
+        <li>{{ university.sync_warning }}</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
 {% if rate_limited_jobs %}
 <div class="alert alert-warning">
     Источник временно недоступен:

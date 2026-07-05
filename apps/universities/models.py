@@ -14,6 +14,7 @@ class MedicalUniversity(models.Model):
         "Интервал синхронизации (сек)", default=3600
     )
     last_synced_at = models.DateTimeField("Последняя синхронизация", null=True, blank=True)
+    sync_warning = models.TextField("Предупреждение синхронизации", blank=True)
 
     class Meta:
         verbose_name = "Медицинский университет"

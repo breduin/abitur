@@ -14,11 +14,13 @@ flowchart LR
     Factory --> Client3[almazov POST HTML]
     Factory --> Client4[szgmu GET HTML]
     Factory --> Client5[sechenov GET HTML paged]
+    Factory --> Client6[rsmu GET JSON chain]
     Client1 --> API1[abit.1spbgmu.ru]
     Client2 --> API2[spiski.gpmu.org]
     Client3 --> API3[abit.almazovcentre.ru]
     Client4 --> API4[szgmu.ru]
     Client5 --> API5[priem.sechenov.ru]
+    Client6 --> API6[submitted.rsmu.ru]
     Sync --> DB[(ApplicantProfile)]
 ```
 
@@ -346,6 +348,68 @@ curl -k -s "https://priem.sechenov.ru/local/components/firstbit/competition.list
 
 ---
 
+## Provider: `rsmu` — Пироговский университет (Мск)
+
+**URL:** `https://submitted.rsmu.ru`
+
+### api_config
+
+```json
+{
+  "provider": "rsmu",
+  "base_url": "https://submitted.rsmu.ru",
+  "referer": "https://submitted.rsmu.ru/",
+  "admission_title": "Прием на обучение на специалитет - 2026"
+}
+```
+
+### Алгоритм (цепочка из 4 запросов)
+
+1. **GET** `/data/root.json?v={ts}&_={ts+offset}` → выбрать элемент с `admission_title` (специалитет), взять `file`
+2. **GET** `/data/{file}?v=...&_=...` → список дат публикации. Если элементов **больше одного** — предупреждение на главном экране (`MedicalUniversity.sync_warning`), по умолчанию берётся **первый**
+3. **GET** `/data/{date_file}?v=...&_=...` → список программ/конкурсов. Для направления выбирается элемент по `program_title` из `filter_params`
+4. **GET** `/data/{program_file}?v=...&_=...` → JSON с `plan`, `count`, `applicants[]`
+
+Таймстампы: `v` — текущее время в миллисекундах, `_` — смещение ~3 с от `v`.
+
+Шаги 1–3 кэшируются в памяти процесса на 1 час (общие для всех направлений одного МУ).
+
+Пагинации нет — весь список в одном ответе. Порог `min_fetch_score` применяется при обходе `applicants`.
+
+**Позиция** = порядковый номер в массиве `applicants` (с 1), поле `order` из API **не используется**.
+
+### Направления (seed)
+
+| Направление    | program_title | Места (seed) |
+|----------------|---------------|--------------|
+| Лечебное дело  | `Лечебное дело (Лечебное дело) Общий конкурс 2026` | 426 |
+| Педиатрия      | `Педиатрия Общий конкурс 2026` | 283 |
+
+**Места:** из поля `plan` ответа шага 4; seed задаёт начальные значения.
+
+### Маппинг полей ответа
+
+| API поле | ApplicantProfile |
+|----------|------------------|
+| `title` | `abiturient_id` |
+| (порядок в `applicants`) | `position` |
+| `total` | `nsummark` |
+| `priority` | `npriority_ssp` |
+| `state` | `sstatus_ssp` |
+| `approval` | `has_enrollment_consent` |
+
+### Пример curl (шаг 1)
+
+```bash
+TS=$(date +%s%3N)
+curl -s "https://submitted.rsmu.ru/data/root.json?v=${TS}&_=$((TS+3000))" \
+  -H "User-Agent: Mozilla/5.0 ..." \
+  -H "Accept: */*" \
+  -H "Referer: https://submitted.rsmu.ru/"
+```
+
+---
+
 ## Обработка ошибок (общая)
 
 | Ситуация | Поведение |
@@ -369,6 +433,7 @@ curl -k -s "https://priem.sechenov.ru/local/components/firstbit/competition.list
 3. **Центр Алмазова** — 2 направления (162 и 16 мест), provider almazov
 4. **СЗГМУ Мечникова (СПб)** — Лечебное дело (97 мест), provider szgmu
 5. **Сеченовский университет (Мск)** — Лечебное дело (495) и Педиатрия (31), provider sechenov
+6. **Пироговский университет (Мск)** — Лечебное дело (426) и Педиатрия (283), provider rsmu
 
 Идемпотентна: `get_or_create` + обновление `filter_params` / `seats` при расхождении.
 
@@ -384,6 +449,7 @@ curl -k -s "https://priem.sechenov.ru/local/components/firstbit/competition.list
 | `apps/admissions/clients/szgmu_html_parser.py` | Парсер HTML-таблицы СЗГМУ |
 | `apps/admissions/clients/sechenov_client.py` | Клиент Сеченова |
 | `apps/admissions/clients/sechenov_html_parser.py` | Парсер HTML-таблицы Сеченова |
+| `apps/admissions/clients/rsmu_client.py` | Клиент Пироговского (RSMU) |
 | `apps/admissions/clients/factory.py` | Выбор клиента по provider |
 | `apps/admissions/clients/parsers.py` | Парсинг row → ApplicantProfile |
 | `apps/admissions/services/sync_service.py` | Оркестрация синхронизации |

@@ -3,6 +3,7 @@ from typing import Any
 from apps.admissions.clients.almazov_client import AlmazovClient
 from apps.admissions.clients.base import UniversityAPIError
 from apps.admissions.clients.gpmu_client import GPMUClient
+from apps.admissions.clients.rsmu_client import RSMUClient
 from apps.admissions.clients.sechenov_client import SechenovClient
 from apps.admissions.clients.szgmu_client import SZGMUClient
 from apps.admissions.clients.university_client import UniversityAPIClient
@@ -21,6 +22,8 @@ def get_university_client(api_config: dict[str, Any]):
         return SZGMUClient(api_config)
     if provider == "sechenov":
         return SechenovClient(api_config)
+    if provider == "rsmu":
+        return RSMUClient(api_config)
     if provider == "1spbgmu":
         return UniversityAPIClient(api_config)
 
