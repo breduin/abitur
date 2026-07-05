@@ -1,6 +1,7 @@
 FIRST_MED_NAME = "Первый мед (СПб)"
 PEDIATRIC_NAME = "Педиатрический (СПб)"
 ALMAZOV_NAME = "Центр Алмазова"
+SZGMU_NAME = "СЗГМУ Мечникова (СПб)"
 
 FIRST_MED_API_CONFIG = {
     "provider": "1spbgmu",
@@ -124,6 +125,23 @@ def ensure_pediatric_seed():
     _ensure_university_directions(university, PEDIATRIC_API_CONFIG, PEDIATRIC_DIRECTIONS)
 
 
+SZGMU_API_CONFIG = {
+    "provider": "szgmu",
+    "base_url": "https://szgmu.ru",
+}
+
+SZGMU_DIRECTIONS = [
+    {
+        "name": "Лечебное дело",
+        "seats": 97,
+        "filter_params": {
+            "list_path": "/priem2026/spec/stage1/html/lech_budget.php",
+            "section_marker": "общий конкурс",
+        },
+    },
+]
+
+
 def ensure_almazov_seed():
     from apps.universities.models import MedicalUniversity
 
@@ -134,7 +152,18 @@ def ensure_almazov_seed():
     _ensure_university_directions(university, ALMAZOV_API_CONFIG, ALMAZOV_DIRECTIONS)
 
 
+def ensure_szgmu_seed():
+    from apps.universities.models import MedicalUniversity
+
+    university, _ = MedicalUniversity.objects.get_or_create(
+        name=SZGMU_NAME,
+        defaults={"api_config": SZGMU_API_CONFIG},
+    )
+    _ensure_university_directions(university, SZGMU_API_CONFIG, SZGMU_DIRECTIONS)
+
+
 def ensure_seed_data():
     ensure_first_med_seed()
     ensure_pediatric_seed()
     ensure_almazov_seed()
+    ensure_szgmu_seed()

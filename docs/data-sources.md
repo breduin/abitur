@@ -12,9 +12,11 @@ flowchart LR
     Factory --> Client1[1spbgmu POST]
     Factory --> Client2[gpmu GET]
     Factory --> Client3[almazov POST HTML]
+    Factory --> Client4[szgmu GET HTML]
     Client1 --> API1[abit.1spbgmu.ru]
     Client2 --> API2[spiski.gpmu.org]
     Client3 --> API3[abit.almazovcentre.ru]
+    Client4 --> API4[szgmu.ru]
     Sync --> DB[(ApplicantProfile)]
 ```
 
@@ -243,6 +245,55 @@ curl -X POST "https://abit.almazovcentre.ru/wp-content/themes/new-imo-2025/retur
 
 ---
 
+## Provider: `szgmu` — СЗГМУ Мечникова (СПб)
+
+**URL:** `https://szgmu.ru`
+
+### api_config
+
+```json
+{
+  "provider": "szgmu",
+  "base_url": "https://szgmu.ru"
+}
+```
+
+### Алгоритм
+
+1. **GET** `/priem2026/spec/stage1/html/lech_budget.php`
+2. Ответ — HTML с несколькими `<tbody>`; берётся `tbody#Бюджет` с секцией «В рамках КЦП, общий конкурс»
+3. Места из текста `(Количество мест - 97, ...)`
+4. Пагинации нет; порог применяется при обходе строк
+5. CSRF не требуется
+
+### Направления (seed)
+
+| Направление    | list_path | Места (seed) |
+|----------------|-----------|--------------|
+| Лечебное дело  | `/priem2026/spec/stage1/html/lech_budget.php` | 97 |
+
+**Места:** задаются в seed, при синхронизации обновляются из HTML секции
+
+### Маппинг полей ответа
+
+| API колонка (рус.) | ApplicantProfile |
+|--------------------|------------------|
+| `Уникальный код поступающего` | `abiturient_id` |
+| (порядок в списке) | `position` |
+| `Сумма конкурсных баллов` | `nsummark` |
+| `Приоритет` | `npriority_ssp` |
+| (в списке) | `sstatus_ssp`: «Участвует в конкурсе» |
+| `Согласие на зачисление` | `has_enrollment_consent`: «Да» → true |
+
+### Пример curl
+
+```bash
+curl -s "https://szgmu.ru/priem2026/spec/stage1/html/lech_budget.php" \
+  -H "User-Agent: Mozilla/5.0 ..."
+```
+
+---
+
 ## Обработка ошибок (общая)
 
 | Ситуация | Поведение |
@@ -264,6 +315,7 @@ curl -X POST "https://abit.almazovcentre.ru/wp-content/themes/new-imo-2025/retur
 1. **Первый мед (СПб)** — 2 направления (135 и 15 мест)
 2. **Педиатрический (СПб)** — 2 направления, provider gpmu
 3. **Центр Алмазова** — 2 направления (162 и 16 мест), provider almazov
+4. **СЗГМУ Мечникова (СПб)** — Лечебное дело (97 мест), provider szgmu
 
 Идемпотентна: `get_or_create` + обновление `filter_params` / `seats` при расхождении.
 
@@ -275,6 +327,8 @@ curl -X POST "https://abit.almazovcentre.ru/wp-content/themes/new-imo-2025/retur
 | `apps/admissions/clients/gpmu_client.py` | Клиент GPMU |
 | `apps/admissions/clients/almazov_client.py` | Клиент Almazov |
 | `apps/admissions/clients/almazov_html_parser.py` | Парсер HTML-таблицы Almazov |
+| `apps/admissions/clients/szgmu_client.py` | Клиент СЗГМУ |
+| `apps/admissions/clients/szgmu_html_parser.py` | Парсер HTML-таблицы СЗГМУ |
 | `apps/admissions/clients/factory.py` | Выбор клиента по provider |
 | `apps/admissions/clients/parsers.py` | Парсинг row → ApplicantProfile |
 | `apps/admissions/services/sync_service.py` | Оркестрация синхронизации |

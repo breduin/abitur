@@ -3,6 +3,9 @@ from unittest.mock import MagicMock, patch
 
 from apps.admissions.clients.almazov_client import AlmazovClient
 from apps.admissions.clients.almazov_html_parser import parse_seats, parse_table, rows_to_dicts
+from apps.admissions.clients.szgmu_client import SZGMUClient
+from apps.admissions.clients.szgmu_html_parser import parse_budget_section
+from apps.admissions.clients.szgmu_html_parser import rows_to_dicts as szgmu_rows_to_dicts
 from apps.admissions.clients.base import RateLimitError
 from apps.admissions.clients.gpmu_client import GPMUClient
 from apps.admissions.clients.parsed import ParsedApplicantRow
@@ -348,6 +351,68 @@ class AlmazovClientTests(SimpleTestCase):
         self.assertEqual(rows[0]["Уникальный код"], "1198285")
         self.assertEqual(rows[1]["Уникальный код"], "1107909")
         self.assertEqual(client.last_seats, 162)
+
+
+SZGMU_SAMPLE_HTML = """
+<table>
+<thead>
+<tr>
+<th></th><th>№ п/п</th><th>Уникальный<br>код<br>поступающего</th>
+<th>Сумма<br>конкурсных<br>баллов</th><th>Сумма баллов<br>за вступит.<br>испытания</th>
+<th>Балл<br>по химии<br>(физиологии чел.)</th><th>Балл<br>по биологии<br>(анатомии чел.)</th>
+<th>Балл<br>по русскому<br>языку</th><th>Балл<br>за<br>инд. дост.</th>
+<th>Балл<br>за целевые<br>инд. дост.</th><th>Преим.<br>право</th>
+<th>Преим. право<br>в соотв. с п.70.1<br>Правил приема </th>
+<th>Согласие<br>на<br>зачисление</th><th>Приоритет</th>
+</tr>
+</thead>
+<tbody id='Бюджет'>
+<tr>
+<td class='bottom_line'><b>В рамках КЦП,<br>общий конкурс</b><br>(Количество мест - 97)</td>
+<td>1</td><td>1214906</td><td>307</td><td>297</td><td>100</td><td>100</td><td>97</td>
+<td>10</td><td>-</td><td>Нет</td><td>Нет</td><td>Нет</td><td>1</td>
+</tr>
+<td>2</td><td>1254508</td><td>307</td><td>297</td><td>97</td><td>100</td><td>100</td>
+<td>10</td><td>-</td><td>Нет</td><td>Нет</td><td>Да</td><td>2</td>
+</tr>
+<td>3</td><td>1289187</td><td>199</td><td>189</td><td>100</td><td>98</td><td>97</td>
+<td>10</td><td>-</td><td>Нет</td><td>Нет</td><td>Нет</td><td>1</td>
+</tr>
+</tbody>
+</table>
+"""
+
+
+class SZGMUClientTests(SimpleTestCase):
+    def test_parse_budget_section(self):
+        seats, headers, rows = parse_budget_section(SZGMU_SAMPLE_HTML)
+        self.assertEqual(seats, 97)
+        self.assertEqual(headers[1], "Уникальный код поступающего")
+        self.assertEqual(len(rows), 3)
+        self.assertEqual(rows[0][1], "1214906")
+
+    def test_from_szgmu_row_parses_valid_data(self):
+        _, headers, rows = parse_budget_section(SZGMU_SAMPLE_HTML)
+        row = szgmu_rows_to_dicts(headers, rows)[1]
+        parsed = ParsedApplicantRow.from_szgmu_row(row, position=2)
+        self.assertEqual(parsed.abiturient_id, "1254508")
+        self.assertEqual(parsed.nsummark, 307)
+        self.assertEqual(parsed.npriority_ssp, 2)
+        self.assertTrue(parsed.has_enrollment_consent)
+
+    @patch("apps.admissions.clients.szgmu_client.SZGMUClient.fetch_list_html")
+    def test_fetch_stops_at_threshold(self, mock_html):
+        mock_html.return_value = SZGMU_SAMPLE_HTML
+        client = SZGMUClient({"base_url": "https://szgmu.ru"})
+        rows = list(
+            client.fetch_all_above_threshold(
+                {"list_path": "/priem2026/spec/stage1/html/lech_budget.php"},
+                min_score=200,
+            )
+        )
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0]["Уникальный код поступающего"], "1214906")
+        self.assertEqual(client.last_seats, 97)
 
 
 class AuthTests(TestCase):

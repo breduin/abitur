@@ -5,6 +5,7 @@ from apps.universities.seed import (
     ALMAZOV_NAME,
     FIRST_MED_NAME,
     PEDIATRIC_NAME,
+    SZGMU_NAME,
     ensure_seed_data,
 )
 
@@ -17,7 +18,8 @@ class SeedTests(TestCase):
         self.assertEqual(MedicalUniversity.objects.filter(name=FIRST_MED_NAME).count(), 1)
         self.assertEqual(MedicalUniversity.objects.filter(name=PEDIATRIC_NAME).count(), 1)
         self.assertEqual(MedicalUniversity.objects.filter(name=ALMAZOV_NAME).count(), 1)
-        self.assertEqual(StudyDirection.objects.count(), 6)
+        self.assertEqual(MedicalUniversity.objects.filter(name=SZGMU_NAME).count(), 1)
+        self.assertEqual(StudyDirection.objects.count(), 7)
 
         first_med = MedicalUniversity.objects.get(name=FIRST_MED_NAME)
         self.assertEqual(first_med.api_config.get("provider"), "1spbgmu")
@@ -43,3 +45,12 @@ class SeedTests(TestCase):
         }
         self.assertIn("000000060_31.05.01 Lechebnoe delo (Osnovnye mesta v ramkakh KTsP)_B.txt", almazov_files)
         self.assertIn("000000060_31.05.02 Pediatriya (Osnovnye mesta v ramkakh KTsP)_B.txt", almazov_files)
+
+        szgmu = MedicalUniversity.objects.get(name=SZGMU_NAME)
+        self.assertEqual(szgmu.api_config.get("provider"), "szgmu")
+        lech = szgmu.directions.get(name="Лечебное дело")
+        self.assertEqual(lech.seats, 97)
+        self.assertEqual(
+            lech.filter_params.get("list_path"),
+            "/priem2026/spec/stage1/html/lech_budget.php",
+        )
