@@ -5,6 +5,7 @@ from typing import Any
 from django.utils import timezone
 
 from apps.admissions.models import ApplicantProfile, SyncJob
+from apps.admissions.services.consent_modeling_service import compute_consent_model
 from apps.universities.models import MedicalUniversity, StudyDirection
 
 GROUP_PETERSBURGHERS = "petersburgers"
@@ -223,6 +224,7 @@ def compute_analytics() -> dict[str, Any]:
         },
         "full_spb_coverage": full_spb_coverage,
         "spb_lech_coverage": spb_lech_coverage,
+        "consent_modeling": compute_consent_model(),
         "directions": directions_payload,
     }
 

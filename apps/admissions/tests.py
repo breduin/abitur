@@ -25,9 +25,14 @@ from apps.admissions.services.analytics_service import (
     GROUP_VISITORS,
     save_analytics_snapshot,
 )
+from apps.admissions.services.consent_modeling_service import (
+    compute_consent_model,
+    get_user_consent_projection,
+)
 from apps.admissions.services.position_service import PositionService
 from apps.admissions.services.sync_service import should_skip_sync, sync_direction
 from apps.universities.models import MedicalUniversity, StudyDirection
+from apps.universities.seed import FIRST_MED_NAME, PEDIATRIC_NAME, SECHENOV_NAME
 from apps.users.models import User
 from django.utils import timezone
 from datetime import timedelta
@@ -1034,6 +1039,182 @@ class AnalyticsServiceTests(TestCase):
         self.client.post("/login/", {"abiturient_id": "777"})
         response = self.client.get("/analytics/")
         self.assertEqual(response.status_code, 200)
+
+
+class ConsentModelingServiceTests(TestCase):
+    def _create_profile(self, direction, abiturient_id, *, position, npriority, nsummark, raw_data=None):
+        return ApplicantProfile.objects.create(
+            direction=direction,
+            abiturient_id=abiturient_id,
+            position=position,
+            sstatus_ssp="Участвует",
+            nsummark=nsummark,
+            npriority_ssp=npriority,
+            raw_data=raw_data or {},
+        )
+
+    def test_consent_prefers_higher_ranked_passing_university(self):
+        sechenov = MedicalUniversity.objects.create(
+            name=SECHENOV_NAME,
+            city=MedicalUniversity.City.MSK,
+        )
+        first_med = MedicalUniversity.objects.create(
+            name=FIRST_MED_NAME,
+            city=MedicalUniversity.City.SPB,
+        )
+        sechenov_lech = StudyDirection.objects.create(
+            university=sechenov,
+            name="Лечебное дело",
+            filter_params={},
+            seats=10,
+        )
+        first_med_lech = StudyDirection.objects.create(
+            university=first_med,
+            name="Лечебное дело",
+            filter_params={},
+            seats=10,
+        )
+
+        self._create_profile(sechenov_lech, "A1", position=1, npriority=1, nsummark=300)
+        self._create_profile(first_med_lech, "A1", position=1, npriority=1, nsummark=300)
+
+        model = compute_consent_model()
+        self.assertEqual(model["consent_by_abiturient"]["A1"], sechenov.id)
+
+    def test_consent_prefers_first_med_over_pediatric_when_passing(self):
+        first_med = MedicalUniversity.objects.create(
+            name=FIRST_MED_NAME,
+            city=MedicalUniversity.City.SPB,
+        )
+        pediatric = MedicalUniversity.objects.create(
+            name=PEDIATRIC_NAME,
+            city=MedicalUniversity.City.SPB,
+        )
+        first_med_ped = StudyDirection.objects.create(
+            university=first_med,
+            name="Педиатрия",
+            filter_params={},
+            seats=10,
+        )
+        pediatric_ped = StudyDirection.objects.create(
+            university=pediatric,
+            name="Педиатрия",
+            filter_params={},
+            seats=10,
+        )
+
+        self._create_profile(pediatric_ped, "A2", position=1, npriority=2, nsummark=290)
+        self._create_profile(first_med_ped, "A2", position=5, npriority=1, nsummark=290)
+
+        model = compute_consent_model()
+        self.assertEqual(model["consent_by_abiturient"]["A2"], first_med.id)
+        competitive_first_med = model["competitive_by_direction"][str(first_med_ped.id)]
+        self.assertIn("A2", competitive_first_med)
+
+    def test_consent_chooses_smallest_gap_when_not_passing(self):
+        first_med = MedicalUniversity.objects.create(name=FIRST_MED_NAME, city=MedicalUniversity.City.SPB)
+        pediatric = MedicalUniversity.objects.create(name=PEDIATRIC_NAME, city=MedicalUniversity.City.SPB)
+        first_med_lech = StudyDirection.objects.create(
+            university=first_med,
+            name="Лечебное дело",
+            filter_params={},
+            seats=5,
+        )
+        pediatric_lech = StudyDirection.objects.create(
+            university=pediatric,
+            name="Лечебное дело",
+            filter_params={},
+            seats=5,
+        )
+
+        self._create_profile(first_med_lech, "A3", position=7, npriority=1, nsummark=280)
+        self._create_profile(pediatric_lech, "A3", position=10, npriority=1, nsummark=280)
+
+        model = compute_consent_model()
+        self.assertEqual(model["consent_by_abiturient"]["A3"], first_med.id)
+
+    def test_olympiad_ranks_first_in_competitive_list(self):
+        university = MedicalUniversity.objects.create(name=FIRST_MED_NAME, city=MedicalUniversity.City.SPB)
+        lech = StudyDirection.objects.create(
+            university=university,
+            name="Лечебное дело",
+            filter_params={},
+            seats=2,
+        )
+
+        self._create_profile(lech, "REG1", position=2, npriority=1, nsummark=310)
+        self._create_profile(
+            lech,
+            "OLY1",
+            position=3,
+            npriority=1,
+            nsummark=0,
+            raw_data={"noExam": True},
+        )
+
+        model = compute_consent_model()
+        competitive = model["competitive_by_direction"][str(lech.id)]
+        self.assertEqual(competitive[0], "OLY1")
+
+    def test_cutoff_score_is_last_enrolled_applicant(self):
+        university = MedicalUniversity.objects.create(name=FIRST_MED_NAME, city=MedicalUniversity.City.SPB)
+        lech = StudyDirection.objects.create(
+            university=university,
+            name="Лечебное дело",
+            filter_params={},
+            seats=2,
+        )
+
+        self._create_profile(lech, "E1", position=1, npriority=1, nsummark=320)
+        self._create_profile(lech, "E2", position=2, npriority=1, nsummark=310)
+        self._create_profile(lech, "E3", position=3, npriority=1, nsummark=300)
+
+        model = compute_consent_model()
+        cutoff = next(item for item in model["cutoff_scores"] if item["direction_id"] == lech.id)
+        self.assertEqual(cutoff["enrolled_count"], 2)
+        self.assertEqual(cutoff["cutoff_score"], 310)
+
+    def test_user_projection_for_applied_directions(self):
+        university = MedicalUniversity.objects.create(name=FIRST_MED_NAME, city=MedicalUniversity.City.SPB)
+        lech = StudyDirection.objects.create(
+            university=university,
+            name="Лечебное дело",
+            filter_params={},
+            seats=2,
+        )
+
+        self._create_profile(lech, "USER1", position=1, npriority=1, nsummark=320)
+        self._create_profile(lech, "OTHER1", position=2, npriority=1, nsummark=310)
+        self._create_profile(lech, "OTHER2", position=3, npriority=1, nsummark=300)
+
+        user = User.objects.create_user(abiturient_id="USER1", is_verified=True)
+        user.applied_universities.add(university)
+
+        model = compute_consent_model()
+        projection = get_user_consent_projection(user, model)
+        self.assertEqual(len(projection), 1)
+        self.assertTrue(projection[0].is_admitted)
+        self.assertEqual(projection[0].position, 1)
+
+        user2 = User.objects.create_user(abiturient_id="OTHER2", is_verified=True)
+        user2.applied_universities.add(university)
+        projection2 = get_user_consent_projection(user2, model)
+        self.assertFalse(projection2[0].is_admitted)
+        self.assertEqual(projection2[0].position, 3)
+
+    def test_analytics_snapshot_includes_consent_modeling(self):
+        university = MedicalUniversity.objects.create(name=FIRST_MED_NAME, city=MedicalUniversity.City.SPB)
+        lech = StudyDirection.objects.create(
+            university=university,
+            name="Лечебное дело",
+            filter_params={},
+            seats=1,
+        )
+        self._create_profile(lech, "X1", position=1, npriority=1, nsummark=300)
+
+        payload = save_analytics_snapshot()
+        self.assertIn("consent_modeling", payload)
+        self.assertIn("cutoff_scores", payload["consent_modeling"])
 
 
 class AuthTests(TestCase):

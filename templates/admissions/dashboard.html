@@ -68,6 +68,97 @@
     </div>
 </div>
 
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-primary-custom text-white">
+        <h2 class="h5 mb-0">Проходные баллы (моделирование согласий)</h2>
+    </div>
+    <div class="card-body pb-2">
+        <p class="text-muted small mb-0">
+            Прогноз проходного балла по конкурсным спискам с учётом моделирования подачи согласий.
+            {% if consent_modeling_computed_at %}
+            Рассчитано: {{ consent_modeling_computed_at|date:"d.m.Y H:i" }}.
+            {% endif %}
+        </p>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>Медицинский университет</th>
+                    <th>Направление</th>
+                    <th>Мест</th>
+                    <th>Зачислено</th>
+                    <th>Проходной балл</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in cutoff_scores %}
+                <tr>
+                    <td>{{ row.university_name }}</td>
+                    <td>{{ row.direction_name }}</td>
+                    <td>{% if row.seats is not None %}{{ row.seats }}{% else %}—{% endif %}</td>
+                    <td>{{ row.enrolled_count }}</td>
+                    <td>{% if row.cutoff_score is not None %}{{ row.cutoff_score }}{% else %}—{% endif %}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="5" class="text-muted">Нет данных. Обновите списки поступающих.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-accent text-white">
+        <h2 class="h5 mb-0">Конкурсный список: мой прогноз зачисления</h2>
+    </div>
+    <div class="card-body pb-2">
+        <p class="text-muted small mb-0">
+            Позиция в списке на зачисление по направлениям, куда вы подали заявления.
+        </p>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>Медицинский университет</th>
+                    <th>Направление</th>
+                    <th>Мест</th>
+                    <th>Приоритет</th>
+                    <th>Баллы</th>
+                    <th>Позиция</th>
+                    <th>Проходной</th>
+                    <th>Статус</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in consent_projection %}
+                <tr>
+                    <td>{{ row.university_name }}</td>
+                    <td>{{ row.direction_name }}</td>
+                    <td>{% if row.seats is not None %}{{ row.seats }}{% else %}—{% endif %}</td>
+                    <td>{% if row.npriority_ssp is not None %}{{ row.npriority_ssp }}{% else %}—{% endif %}</td>
+                    <td>{% if row.nsummark is not None %}{{ row.nsummark }}{% else %}—{% endif %}</td>
+                    <td>{% if row.position %}{{ row.position }}{% else %}—{% endif %}</td>
+                    <td>{% if row.cutoff_score is not None %}{{ row.cutoff_score }}{% else %}—{% endif %}</td>
+                    <td>
+                        {% if row.is_admitted %}
+                            <span class="badge bg-success">Проходит</span>
+                        {% elif row.position %}
+                            <span class="badge bg-warning text-dark">Не проходит</span>
+                        {% else %}
+                            <span class="badge bg-secondary">Нет в списке</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="8" class="text-muted">Нет поданных заявлений или данных моделирования.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
 <div class="card shadow-sm">
     <div class="card-header bg-accent text-white">
         <h2 class="h5 mb-0">Прогноз (среди чужих с приоритетом 1)</h2>

@@ -13,6 +13,9 @@ from apps.admissions.services.analytics_service import (
     GROUP_VISITORS,
     save_analytics_snapshot,
 )
+from apps.admissions.services.consent_modeling_service import (
+    get_user_consent_projection,
+)
 from apps.admissions.services.position_service import PositionService
 from apps.admissions.tasks import sync_all_active_universities
 from apps.universities.models import MedicalUniversity
@@ -37,12 +40,30 @@ def dashboard_view(request):
         is_active=True,
     ).exclude(sync_warning="")
 
+    snapshot = AnalyticsSnapshot.objects.order_by("-computed_at").first()
+    if snapshot is None and ApplicantProfile.objects.exists():
+        save_analytics_snapshot()
+        snapshot = AnalyticsSnapshot.objects.order_by("-computed_at").first()
+
+    payload = snapshot.payload if snapshot else None
+    if payload and "consent_modeling" not in payload and ApplicantProfile.objects.exists():
+        payload = save_analytics_snapshot()
+        snapshot = AnalyticsSnapshot.objects.order_by("-computed_at").first()
+
+    consent_modeling = payload.get("consent_modeling") if payload else None
+
     return render(
         request,
         "admissions/dashboard.html",
         {
             "current_positions": service.get_current_positions(),
             "forecast_positions": service.get_forecast_positions(),
+            "cutoff_scores": (consent_modeling or {}).get("cutoff_scores") or [],
+            "consent_projection": get_user_consent_projection(
+                request.user,
+                consent_modeling,
+            ),
+            "consent_modeling_computed_at": snapshot.computed_at if snapshot else None,
             "rate_limited_jobs": rate_limited_jobs,
             "sync_warnings": sync_warnings,
             "last_data_update": _get_last_data_update(),
@@ -118,6 +139,7 @@ def analytics_view(request):
     if payload and (
         "full_spb_coverage" not in payload
         or "spb_lech_coverage" not in payload
+        or "consent_modeling" not in payload
     ):
         payload = save_analytics_snapshot()
         snapshot = AnalyticsSnapshot.objects.order_by("-computed_at").first()
