@@ -29,6 +29,11 @@ def parse_gpmu_enrollment_consent(row: dict[str, Any]) -> bool:
     )
 
 
+def parse_sechenov_enrollment_consent(row: dict[str, Any]) -> bool:
+    value = str(row.get("Подано согласие", "")).strip().lower()
+    return value in {"да", "✓", "✔", "yes", "true", "1"}
+
+
 def parse_szgmu_enrollment_consent(row: dict[str, Any]) -> bool:
     value = str(row.get("Согласие на зачисление", "")).strip().lower()
     return value in {"да", "✓", "✔", "yes", "true", "1"}

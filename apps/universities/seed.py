@@ -2,6 +2,7 @@ FIRST_MED_NAME = "Первый мед (СПб)"
 PEDIATRIC_NAME = "Педиатрический (СПб)"
 ALMAZOV_NAME = "Центр Алмазова"
 SZGMU_NAME = "СЗГМУ Мечникова (СПб)"
+SECHENOV_NAME = "Сеченовский университет (Мск)"
 
 FIRST_MED_API_CONFIG = {
     "provider": "1spbgmu",
@@ -152,6 +153,33 @@ def ensure_almazov_seed():
     _ensure_university_directions(university, ALMAZOV_API_CONFIG, ALMAZOV_DIRECTIONS)
 
 
+SECHENOV_API_CONFIG = {
+    "provider": "sechenov",
+    "base_url": "https://priem.sechenov.ru",
+    "verify_ssl": False,
+    "page_delay": 0.35,
+}
+
+SECHENOV_DIRECTIONS = [
+    {
+        "name": "Лечебное дело",
+        "seats": 495,
+        "filter_params": {
+            "competitive_group_id": "19488",
+            "seats": 495,
+        },
+    },
+    {
+        "name": "Педиатрия",
+        "seats": 31,
+        "filter_params": {
+            "competitive_group_id": "19486",
+            "seats": 31,
+        },
+    },
+]
+
+
 def ensure_szgmu_seed():
     from apps.universities.models import MedicalUniversity
 
@@ -162,8 +190,19 @@ def ensure_szgmu_seed():
     _ensure_university_directions(university, SZGMU_API_CONFIG, SZGMU_DIRECTIONS)
 
 
+def ensure_sechenov_seed():
+    from apps.universities.models import MedicalUniversity
+
+    university, _ = MedicalUniversity.objects.get_or_create(
+        name=SECHENOV_NAME,
+        defaults={"api_config": SECHENOV_API_CONFIG},
+    )
+    _ensure_university_directions(university, SECHENOV_API_CONFIG, SECHENOV_DIRECTIONS)
+
+
 def ensure_seed_data():
     ensure_first_med_seed()
     ensure_pediatric_seed()
     ensure_almazov_seed()
     ensure_szgmu_seed()
+    ensure_sechenov_seed()

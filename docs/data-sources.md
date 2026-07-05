@@ -13,10 +13,12 @@ flowchart LR
     Factory --> Client2[gpmu GET]
     Factory --> Client3[almazov POST HTML]
     Factory --> Client4[szgmu GET HTML]
+    Factory --> Client5[sechenov GET HTML paged]
     Client1 --> API1[abit.1spbgmu.ru]
     Client2 --> API2[spiski.gpmu.org]
     Client3 --> API3[abit.almazovcentre.ru]
     Client4 --> API4[szgmu.ru]
+    Client5 --> API5[priem.sechenov.ru]
     Sync --> DB[(ApplicantProfile)]
 ```
 
@@ -294,6 +296,56 @@ curl -s "https://szgmu.ru/priem2026/spec/stage1/html/lech_budget.php" \
 
 ---
 
+## Provider: `sechenov` — Сеченовский университет (Мск)
+
+**URL:** `https://priem.sechenov.ru`
+
+### api_config
+
+```json
+{
+  "provider": "sechenov",
+  "base_url": "https://priem.sechenov.ru",
+  "verify_ssl": false,
+  "page_delay": 0.35
+}
+```
+
+### Алгоритм
+
+1. **GET** `applications.php` с `COMPETITIVE_GROUP_ID` и `appPage_{id}=1,2,3...`
+2. На странице 5 заявлений; между запросами пауза `page_delay` (0.35 с)
+3. Парсинг HTML-таблицы по `tr[data-app]`
+4. Остановка по порогу `min_fetch_score` или при пустой странице
+5. CSRF не требуется; SSL-сертификат может быть невалидным (`verify_ssl: false`)
+
+### Направления (seed)
+
+| Направление    | competitive_group_id | Места (seed) |
+|----------------|----------------------|--------------|
+| Лечебное дело  | `19488`              | 495          |
+| Педиатрия      | `19486`              | 31           |
+
+### Маппинг полей ответа
+
+| API колонка (рус.) | ApplicantProfile |
+|--------------------|------------------|
+| `УИД` | `abiturient_id` |
+| (порядок в списке) | `position` |
+| `Сумма конкурсных баллов` | `nsummark` |
+| `Приоритет зачисления` | `npriority_ssp` |
+| `Статус` | `sstatus_ssp` |
+| `Подано согласие` | `has_enrollment_consent`: «Да» → true |
+
+### Пример curl
+
+```bash
+curl -k -s "https://priem.sechenov.ru/local/components/firstbit/competition.list/templates/.default/applications.php?COMPETITIVE_GROUP_ID=19488&appPage_19488=1&ADMISSION_LISTS=N&CONTRACT_IS_PAID=N&ORIGINAL_DOCUMENT=N&lang=ru" \
+  -H "Referer: https://priem.sechenov.ru/submitted-applicants/"
+```
+
+---
+
 ## Обработка ошибок (общая)
 
 | Ситуация | Поведение |
@@ -316,6 +368,7 @@ curl -s "https://szgmu.ru/priem2026/spec/stage1/html/lech_budget.php" \
 2. **Педиатрический (СПб)** — 2 направления, provider gpmu
 3. **Центр Алмазова** — 2 направления (162 и 16 мест), provider almazov
 4. **СЗГМУ Мечникова (СПб)** — Лечебное дело (97 мест), provider szgmu
+5. **Сеченовский университет (Мск)** — Лечебное дело (495) и Педиатрия (31), provider sechenov
 
 Идемпотентна: `get_or_create` + обновление `filter_params` / `seats` при расхождении.
 
@@ -329,6 +382,8 @@ curl -s "https://szgmu.ru/priem2026/spec/stage1/html/lech_budget.php" \
 | `apps/admissions/clients/almazov_html_parser.py` | Парсер HTML-таблицы Almazov |
 | `apps/admissions/clients/szgmu_client.py` | Клиент СЗГМУ |
 | `apps/admissions/clients/szgmu_html_parser.py` | Парсер HTML-таблицы СЗГМУ |
+| `apps/admissions/clients/sechenov_client.py` | Клиент Сеченова |
+| `apps/admissions/clients/sechenov_html_parser.py` | Парсер HTML-таблицы Сеченова |
 | `apps/admissions/clients/factory.py` | Выбор клиента по provider |
 | `apps/admissions/clients/parsers.py` | Парсинг row → ApplicantProfile |
 | `apps/admissions/services/sync_service.py` | Оркестрация синхронизации |

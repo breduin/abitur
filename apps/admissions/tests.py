@@ -3,6 +3,8 @@ from unittest.mock import MagicMock, patch
 
 from apps.admissions.clients.almazov_client import AlmazovClient
 from apps.admissions.clients.almazov_html_parser import parse_seats, parse_table, rows_to_dicts
+from apps.admissions.clients.sechenov_client import SechenovClient
+from apps.admissions.clients.sechenov_html_parser import parse_page_rows
 from apps.admissions.clients.szgmu_client import SZGMUClient
 from apps.admissions.clients.szgmu_html_parser import parse_budget_section
 from apps.admissions.clients.szgmu_html_parser import rows_to_dicts as szgmu_rows_to_dicts
@@ -413,6 +415,67 @@ class SZGMUClientTests(SimpleTestCase):
         self.assertEqual(len(rows), 2)
         self.assertEqual(rows[0]["Уникальный код поступающего"], "1214906")
         self.assertEqual(client.last_seats, 97)
+
+
+class SechenovClientTests(SimpleTestCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        from pathlib import Path
+
+        cls.sample_html = Path(__file__).resolve().parents[2].joinpath(
+            "dev/sechenov_response.html"
+        ).read_text(encoding="utf-8")
+
+    def test_parse_page_rows(self):
+        rows = parse_page_rows(self.sample_html)
+        self.assertEqual(len(rows), 5)
+        self.assertEqual(rows[0]["УИД"], "1106136")
+        self.assertEqual(rows[0]["Сумма конкурсных баллов"], "310")
+        self.assertEqual(rows[0]["Статус"], "Участвует в конкурсе")
+
+    def test_from_sechenov_row_parses_valid_data(self):
+        row = parse_page_rows(self.sample_html)[0]
+        parsed = ParsedApplicantRow.from_sechenov_row(row, position=1)
+        self.assertEqual(parsed.abiturient_id, "1106136")
+        self.assertEqual(parsed.nsummark, 310)
+        self.assertEqual(parsed.npriority_ssp, 1)
+        self.assertTrue(parsed.has_enrollment_consent)
+
+    @patch("apps.admissions.clients.sechenov_client.SechenovClient.fetch_page_html")
+    def test_fetch_paginates_until_threshold(self, mock_html):
+        low_score_row = {
+            "УИД": "9999999",
+            "Сумма конкурсных баллов": "199",
+            "Статус": "Участвует в конкурсе",
+            "Приоритет зачисления": "1",
+            "Подано согласие": "Нет",
+        }
+
+        def fake_page(filter_params, page):
+            if page == 1:
+                return self.sample_html
+            if page == 2:
+                return (
+                    '<tr data-app="1"><td class="table-competition-lists__float">'
+                    '<table class="table-competition-lists__inner-table"><tr>'
+                    "<td>6</td><td>9999999</td></tr></table></td>"
+                    "<td>—</td><td>199</td><td>189</td><td></td><td>10</td><td></td>"
+                    "<td>Нет / Нет</td><td>Нет</td><td>1</td><td>Участвует в конкурсе</td></tr>"
+                )
+            return ""
+
+        mock_html.side_effect = fake_page
+        client = SechenovClient({"base_url": "https://priem.sechenov.ru"})
+        rows = list(
+            client.fetch_all_above_threshold(
+                {"competitive_group_id": "19488", "seats": 495},
+                min_score=200,
+            )
+        )
+        self.assertEqual(len(rows), 5)
+        self.assertEqual(rows[-1]["УИД"], "1447524")
+        self.assertEqual(client.last_seats, 495)
 
 
 class AuthTests(TestCase):

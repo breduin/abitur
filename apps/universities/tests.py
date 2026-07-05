@@ -5,6 +5,7 @@ from apps.universities.seed import (
     ALMAZOV_NAME,
     FIRST_MED_NAME,
     PEDIATRIC_NAME,
+    SECHENOV_NAME,
     SZGMU_NAME,
     ensure_seed_data,
 )
@@ -19,7 +20,8 @@ class SeedTests(TestCase):
         self.assertEqual(MedicalUniversity.objects.filter(name=PEDIATRIC_NAME).count(), 1)
         self.assertEqual(MedicalUniversity.objects.filter(name=ALMAZOV_NAME).count(), 1)
         self.assertEqual(MedicalUniversity.objects.filter(name=SZGMU_NAME).count(), 1)
-        self.assertEqual(StudyDirection.objects.count(), 7)
+        self.assertEqual(MedicalUniversity.objects.filter(name=SECHENOV_NAME).count(), 1)
+        self.assertEqual(StudyDirection.objects.count(), 9)
 
         first_med = MedicalUniversity.objects.get(name=FIRST_MED_NAME)
         self.assertEqual(first_med.api_config.get("provider"), "1spbgmu")
@@ -54,3 +56,13 @@ class SeedTests(TestCase):
             lech.filter_params.get("list_path"),
             "/priem2026/spec/stage1/html/lech_budget.php",
         )
+
+        sechenov = MedicalUniversity.objects.get(name=SECHENOV_NAME)
+        self.assertEqual(sechenov.api_config.get("provider"), "sechenov")
+        sechenov_groups = {
+            d.filter_params.get("competitive_group_id") for d in sechenov.directions.all()
+        }
+        self.assertEqual(sechenov_groups, {"19488", "19486"})
+        sechenov_seats = {d.name: d.seats for d in sechenov.directions.all()}
+        self.assertEqual(sechenov_seats["Лечебное дело"], 495)
+        self.assertEqual(sechenov_seats["Педиатрия"], 31)
