@@ -1134,8 +1134,12 @@ class ApplicantOverlapServiceTests(TestCase):
         )
         self.assertEqual(len(rows), 2)
         self.assertEqual(rows[0].abiturient_id, "A100")
+        self.assertEqual(rows[0].position, 1)
+        self.assertEqual(rows[0].nsummark, 300)
         self.assertIn("MSK Overlap", rows[0].other_applications)
         self.assertEqual(rows[1].abiturient_id, "A200")
+        self.assertEqual(rows[1].position, 2)
+        self.assertEqual(rows[1].nsummark, 290)
         self.assertEqual(rows[1].other_applications, "Только в выбранном списке")
 
 

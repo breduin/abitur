@@ -323,14 +323,15 @@ body {
     justify-content: space-between;
     gap: 1rem;
     cursor: pointer;
+    text-align: left;
 }
 
-.analytics-panel__toggle:focus-visible {
-    outline: 2px solid rgba(255, 255, 255, 0.85);
-    outline-offset: -2px;
+.analytics-panel__toggle .h5 {
+    pointer-events: none;
 }
 
 .analytics-panel__chevron {
+    pointer-events: none;
     width: 0.65rem;
     height: 0.65rem;
     border-right: 2px solid currentColor;
@@ -339,6 +340,11 @@ body {
     transition: transform 0.2s ease;
     flex-shrink: 0;
     margin-top: -0.2rem;
+}
+
+.analytics-panel__toggle:focus-visible {
+    outline: 2px solid rgba(255, 255, 255, 0.85);
+    outline-offset: -2px;
 }
 
 .analytics-panel:not(.is-collapsed) .analytics-panel__chevron {

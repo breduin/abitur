@@ -8,6 +8,8 @@ from apps.universities.models import StudyDirection
 @dataclass
 class ApplicantOverlapRow:
     abiturient_id: str
+    position: int
+    nsummark: int | None
     other_applications: str
 
 
@@ -70,6 +72,8 @@ def get_applicant_overlap_rows(
         rows.append(
             ApplicantOverlapRow(
                 abiturient_id=profile.abiturient_id,
+                position=profile.position,
+                nsummark=profile.nsummark,
                 other_applications=other_text,
             )
         )

@@ -213,50 +213,6 @@
 </section>
 
 <section class="card shadow-sm mb-4 analytics-panel is-collapsed" data-analytics-panel>
-    <button type="button" class="card-header bg-accent text-white analytics-panel__toggle w-100 border-0" aria-expanded="false">
-        <h2 class="h5 mb-0">Таблица по направлениям</h2>
-        <span class="analytics-panel__chevron" aria-hidden="true"></span>
-    </button>
-    <div class="analytics-panel__body table-responsive">
-        <table class="table table-hover mb-0">
-            <thead>
-                <tr>
-                    <th>Медицинский университет</th>
-                    <th>Направление</th>
-                    <th>Абитуриентов в списке</th>
-                    <th>Группа</th>
-                    <th>Количество</th>
-                    <th>Доля в направлении</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for row in analytics.directions %}
-                    {% for group in row.groups %}
-                    <tr>
-                        {% if forloop.first %}
-                        <td rowspan="{{ row.groups|length }}">{{ row.university_name }}</td>
-                        <td rowspan="{{ row.groups|length }}">{{ row.direction_name }}</td>
-                        <td rowspan="{{ row.groups|length }}">{{ row.direction_total }}</td>
-                        {% endif %}
-                        <td>{{ group.label }}</td>
-                        <td>{{ group.count }}</td>
-                        <td>{{ group.percent }}%</td>
-                    </tr>
-                    {% empty %}
-                    <tr>
-                        <td>{{ row.university_name }}</td>
-                        <td>{{ row.direction_name }}</td>
-                        <td>{{ row.direction_total }}</td>
-                        <td colspan="3" class="text-muted">—</td>
-                    </tr>
-                    {% endfor %}
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-</section>
-
-<section class="card shadow-sm mb-4 analytics-panel is-collapsed" data-analytics-panel>
     <button type="button" class="card-header bg-primary-custom text-white analytics-panel__toggle w-100 border-0" aria-expanded="false">
         <h2 class="h5 mb-0">Пересечение списков поступающих</h2>
         <span class="analytics-panel__chevron" aria-hidden="true"></span>
@@ -306,19 +262,23 @@
             <table class="table table-hover mb-0">
                 <thead>
                     <tr>
+                        <th>Позиция</th>
                         <th>ID абитуриента</th>
+                        <th>Баллы</th>
                         <th>Другие списки</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for row in overlap_rows %}
                     <tr>
+                        <td>{{ row.position }}</td>
                         <td>{{ row.abiturient_id }}</td>
+                        <td>{% if row.nsummark is not None %}{{ row.nsummark }}{% else %}—{% endif %}</td>
                         <td>{{ row.other_applications }}</td>
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="2" class="text-muted">
+                        <td colspan="4" class="text-muted">
                             Нет загруженных данных по выбранному направлению.
                         </td>
                     </tr>
@@ -334,8 +294,8 @@
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 <script>
-(() => {
-    const panels = Array.from(document.querySelectorAll("[data-analytics-panel]"));
+function initAnalyticsPage() {
+    const panels = () => Array.from(document.querySelectorAll("[data-analytics-panel]"));
 
     function setPanelCollapsed(panel, collapsed) {
         panel.classList.toggle("is-collapsed", collapsed);
@@ -345,36 +305,42 @@
         }
     }
 
-    panels.forEach((panel) => {
-        const toggle = panel.querySelector(".analytics-panel__toggle");
-        if (!toggle) {
-            return;
-        }
-        toggle.addEventListener("click", () => {
+    if (!document.body.dataset.analyticsPanelsBound) {
+        document.body.dataset.analyticsPanelsBound = "1";
+        document.addEventListener("click", (event) => {
+            const toggle = event.target.closest(".analytics-panel__toggle");
+            if (!toggle) {
+                return;
+            }
+            const panel = toggle.closest("[data-analytics-panel]");
+            if (!panel) {
+                return;
+            }
             setPanelCollapsed(panel, !panel.classList.contains("is-collapsed"));
         });
+    }
+
+    document.getElementById("analytics-expand-all")?.addEventListener("click", () => {
+        panels().forEach((panel) => setPanelCollapsed(panel, false));
     });
 
-    const expandAllButton = document.getElementById("analytics-expand-all");
-    if (expandAllButton) {
-        expandAllButton.addEventListener("click", () => {
-            panels.forEach((panel) => setPanelCollapsed(panel, false));
-        });
-    }
-
-    const collapseAllButton = document.getElementById("analytics-collapse-all");
-    if (collapseAllButton) {
-        collapseAllButton.addEventListener("click", () => {
-            panels.forEach((panel) => setPanelCollapsed(panel, true));
-        });
-    }
+    document.getElementById("analytics-collapse-all")?.addEventListener("click", () => {
+        panels().forEach((panel) => setPanelCollapsed(panel, true));
+    });
 
     const chartDataEl = document.getElementById("analytics-chart-data");
     if (!chartDataEl || typeof Chart === "undefined") {
         return;
     }
 
-    const chartData = JSON.parse(chartDataEl.textContent);
+    let chartData;
+    try {
+        chartData = JSON.parse(chartDataEl.textContent);
+    } catch (error) {
+        console.error("Не удалось разобрать данные графиков аналитики", error);
+        return;
+    }
+
     const GROUP_COLORS = {
         petersburgers: "#4DA6FF",
         muscovites: "#2563a8",
@@ -541,7 +507,13 @@
     if (spbLechChart) {
         renderCoverageBarChart(spbLechChart, chartData.spbLechCoverage, "#2563a8");
     }
-})();
+}
+
+if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initAnalyticsPage);
+} else {
+    initAnalyticsPage();
+}
 </script>
 
 {% endif %}
