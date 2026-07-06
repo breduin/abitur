@@ -3,6 +3,7 @@ from typing import Any
 
 from apps.admissions.clients.field_parsers import (
     parse_almazov_enrollment_consent,
+    is_almazov_bvi,
     parse_cpk_msu_enrollment_consent,
     parse_first_med_enrollment_consent,
     parse_gpmu_competition_status,
@@ -97,10 +98,13 @@ class ParsedApplicantRow:
         if not abiturient_id:
             return None
 
-        try:
-            nsummark = int(row.get("Сумма баллов") or 0)
-        except (TypeError, ValueError):
-            return None
+        if is_almazov_bvi(row):
+            nsummark = 0
+        else:
+            try:
+                nsummark = int(row.get("Сумма баллов") or 0)
+            except (TypeError, ValueError):
+                return None
 
         status = str(row.get("Текущий статус конкурса", "")).strip() or "На рассмотрении"
 

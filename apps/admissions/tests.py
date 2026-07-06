@@ -533,6 +533,37 @@ class AlmazovClientTests(SimpleTestCase):
         self.assertEqual(rows[1]["Уникальный код"], "1107909")
         self.assertEqual(client.last_seats, 162)
 
+    @patch("apps.admissions.clients.almazov_client.AlmazovClient.fetch_list_html")
+    def test_fetch_skips_bvi_at_start(self, mock_html):
+        mock_html.return_value = """
+        <p class='number-places'>Всего мест: 162</p>
+        <table id='table-list'>
+        <tr class='original'><th>№</th><th>Уникальный код</th><th>Приоритет</th><th>БВИ </th>
+        <th>Сумма баллов</th><th>Текущий статус конкурса</th><th>Согласие на зачисление</th></tr>
+        <td>1</td><td>1043997</td><td>1</td><td>✓</td><td>10</td><td>На рассмотрении</td><td></td></tr>
+        <tr class='copy'><td>2</td><td>1508409</td><td>1</td><td></td><td>308</td>
+        <td>Участвует в конкурсе</td><td></td></tr>
+        <tr class='copy'><td>3</td><td>1183513</td><td>1</td><td></td><td>199</td>
+        <td>На рассмотрении</td><td></td></tr>
+        </table>
+        """
+        client = AlmazovClient({"base_url": "https://abit.almazovcentre.ru"})
+        rows = list(client.fetch_all_above_threshold({}, min_score=200))
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0]["Уникальный код"], "1043997")
+        self.assertEqual(rows[1]["Уникальный код"], "1508409")
+
+    def test_from_almazov_row_treats_bvi_as_zero_score(self):
+        row = {
+            "Уникальный код": "1043997",
+            "Сумма баллов": "10",
+            "БВИ ": "✓",
+            "Приоритет": "1",
+            "Текущий статус конкурса": "На рассмотрении",
+        }
+        parsed = ParsedApplicantRow.from_almazov_row(row, position=1)
+        self.assertEqual(parsed.nsummark, 0)
+
 
 SZGMU_SAMPLE_HTML = """
 <table>

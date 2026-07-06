@@ -1,6 +1,7 @@
 from collections.abc import Iterator
 from typing import Any
 
+from apps.admissions.clients.field_parsers import parse_almazov_competition_score
 from apps.admissions.clients.almazov_html_parser import parse_seats, parse_table, rows_to_dicts
 from apps.admissions.clients.base import BaseHTTPClient, UniversityAPIError
 
@@ -55,7 +56,7 @@ class AlmazovClient(BaseHTTPClient):
         headers, rows = parse_table(html)
 
         for position, row in enumerate(rows_to_dicts(headers, rows), start=1):
-            score = self._parse_score(row.get("Сумма баллов"))
+            score = parse_almazov_competition_score(row)
             if self._should_stop_at_score(score, min_score):
                 break
             row["_position"] = position

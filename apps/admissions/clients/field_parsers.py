@@ -45,6 +45,22 @@ def parse_almazov_enrollment_consent(row: dict[str, Any]) -> bool:
     )
 
 
+def is_almazov_bvi(row: dict[str, Any]) -> bool:
+    return is_checkmark(row.get("БВИ ")) or is_checkmark(row.get("БВИ"))
+
+
+def parse_almazov_competition_score(row: dict[str, Any]) -> int | None:
+    if is_almazov_bvi(row):
+        return 0
+    value = row.get("Сумма баллов")
+    if value is None or value == "":
+        return None
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+
+
 def parse_rsmu_enrollment_consent(row: dict[str, Any]) -> bool:
     return bool(row.get("approval"))
 
