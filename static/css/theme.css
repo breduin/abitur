@@ -354,9 +354,13 @@ body {
 
 .analytics-overlap-form {
     display: grid;
-    grid-template-columns: minmax(220px, 1.4fr) minmax(120px, 0.5fr) auto;
+    grid-template-columns: minmax(220px, 1.4fr) minmax(120px, 0.5fr) minmax(200px, 1fr) auto;
     gap: 0.75rem;
     align-items: end;
+}
+
+.analytics-overlap-form__filter {
+    align-self: center;
 }
 
 @media (max-width: 767.98px) {

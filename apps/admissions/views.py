@@ -141,8 +141,7 @@ def _build_chart_data(payload: dict | None) -> dict | None:
     }
 
 
-@login_required
-def analytics_view(request):
+def _ensure_analytics_payload():
     snapshot = AnalyticsSnapshot.objects.order_by("-computed_at").first()
     if snapshot is None and ApplicantProfile.objects.exists():
         save_analytics_snapshot()
@@ -157,6 +156,10 @@ def analytics_view(request):
         payload = save_analytics_snapshot()
         snapshot = AnalyticsSnapshot.objects.order_by("-computed_at").first()
 
+    return payload, snapshot
+
+
+def _parse_overlap_params(request) -> tuple[int | None, int, bool]:
     try:
         overlap_limit = int(request.GET.get("limit", 50))
     except (TypeError, ValueError):
@@ -168,12 +171,26 @@ def analytics_view(request):
     except (TypeError, ValueError):
         direction_id = None
 
-    overlap_context = build_overlap_context(
-        request.user,
+    enrolled_only = request.GET.get("enrolled_only") in ("1", "true", "on")
+    return direction_id, overlap_limit, enrolled_only
+
+
+def _build_overlap_response_context(user, request) -> dict:
+    payload, _snapshot = _ensure_analytics_payload()
+    direction_id, overlap_limit, enrolled_only = _parse_overlap_params(request)
+    return build_overlap_context(
+        user,
         direction_id=direction_id,
         limit=overlap_limit,
         consent_modeling=(payload or {}).get("consent_modeling"),
+        enrolled_only=enrolled_only,
     )
+
+
+@login_required
+def analytics_view(request):
+    payload, snapshot = _ensure_analytics_payload()
+    overlap_context = _build_overlap_response_context(request.user, request)
 
     return render(
         request,
@@ -186,4 +203,13 @@ def analytics_view(request):
             "last_data_update": _get_last_data_update(),
             **overlap_context,
         },
+    )
+
+
+@login_required
+def overlap_partial_view(request):
+    return render(
+        request,
+        "admissions/partials/overlap_content.html",
+        _build_overlap_response_context(request.user, request),
     )

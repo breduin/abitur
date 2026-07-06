@@ -218,77 +218,7 @@
         <span class="analytics-panel__chevron" aria-hidden="true"></span>
     </button>
     <div class="analytics-panel__body">
-        <div class="card-body border-bottom">
-            {% if overlap_directions %}
-            <form method="get" class="analytics-overlap-form">
-                <div>
-                    <label for="overlap-direction" class="form-label small text-muted mb-1">Направление</label>
-                    <select id="overlap-direction" name="direction_id" class="form-select">
-                        {% for direction in overlap_directions %}
-                        <option
-                            value="{{ direction.id }}"
-                            {% if overlap_selected_direction and direction.id == overlap_selected_direction.id %}selected{% endif %}
-                        >
-                            {{ direction.university.name }} — {{ direction.name }}
-                        </option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div>
-                    <label for="overlap-limit" class="form-label small text-muted mb-1">Записей</label>
-                    <input
-                        id="overlap-limit"
-                        type="number"
-                        name="limit"
-                        class="form-control"
-                        min="1"
-                        max="500"
-                        value="{{ overlap_limit }}"
-                    >
-                </div>
-                <div>
-                    <button type="submit" class="btn btn-accent">Показать</button>
-                </div>
-            </form>
-            {% else %}
-            <p class="text-muted mb-0">
-                Укажите вузы с поданными заявлениями в
-                <a href="{% url 'cabinet' %}">личном кабинете</a>, чтобы выбрать направление.
-            </p>
-            {% endif %}
-        </div>
-        {% if overlap_directions %}
-        <div class="table-responsive">
-            <table class="table table-hover mb-0">
-                <thead>
-                    <tr>
-                        <th>Позиция</th>
-                        <th>ID абитуриента</th>
-                        <th>Баллы</th>
-                        <th>Другие списки</th>
-                        <th>Результат моделирования</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for row in overlap_rows %}
-                    <tr>
-                        <td>{{ row.position }}</td>
-                        <td>{{ row.abiturient_id }}</td>
-                        <td>{% if row.nsummark is not None %}{{ row.nsummark }}{% else %}—{% endif %}</td>
-                        <td>{{ row.other_applications }}</td>
-                        <td>{{ row.modeling_result }}</td>
-                    </tr>
-                    {% empty %}
-                    <tr>
-                        <td colspan="5" class="text-muted">
-                            Нет загруженных данных по выбранному направлению.
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-        {% endif %}
+        {% include "admissions/partials/overlap_content.html" %}
     </div>
 </section>
 

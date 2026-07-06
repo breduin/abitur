@@ -1156,6 +1156,23 @@ class ApplicantOverlapServiceTests(TestCase):
         self.assertEqual(rows[0].modeling_result, "MSK Overlap — Лечебное дело")
         self.assertEqual(rows[1].modeling_result, NOT_ENROLLED_LABEL)
 
+    def test_overlap_rows_enrolled_only_filter(self):
+        index = build_appearance_index()
+        consent_modeling = {
+            "enrollment_by_direction": {
+                str(self.spb_direction.id): ["A200"],
+            }
+        }
+        rows = get_applicant_overlap_rows(
+            self.spb_direction.id,
+            limit=10,
+            appearance_index=index,
+            consent_modeling=consent_modeling,
+            enrolled_only=True,
+        )
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].abiturient_id, "A200")
+
     def test_build_enrollment_labels_from_consent_modeling(self):
         consent_modeling = {
             "enrollment_by_direction": {

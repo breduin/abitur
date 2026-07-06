@@ -78,6 +78,16 @@ def build_enrollment_labels_by_abiturient(
     return labels
 
 
+def get_enrolled_abiturient_ids_for_direction(
+    consent_modeling: dict[str, Any] | None,
+    direction_id: int,
+) -> set[str]:
+    if not consent_modeling:
+        return set()
+    enrollment = consent_modeling.get("enrollment_by_direction") or {}
+    return set(enrollment.get(str(direction_id)) or [])
+
+
 def get_applicant_overlap_rows(
     direction_id: int,
     *,
@@ -85,13 +95,23 @@ def get_applicant_overlap_rows(
     appearance_index: dict[str, list[tuple[str, str, int]]] | None = None,
     enrollment_labels: dict[str, str] | None = None,
     modeling_available: bool = True,
+    enrolled_only: bool = False,
+    consent_modeling: dict[str, Any] | None = None,
 ) -> list[ApplicantOverlapRow]:
     from apps.admissions.models import ApplicantProfile
 
     limit = max(1, min(limit, 500))
     index = appearance_index if appearance_index is not None else build_appearance_index()
     labels = enrollment_labels if enrollment_labels is not None else {}
-    profiles = ApplicantProfile.objects.filter(direction_id=direction_id).order_by("position")[:limit]
+
+    profiles_qs = ApplicantProfile.objects.filter(direction_id=direction_id)
+    if enrolled_only:
+        enrolled_ids = get_enrolled_abiturient_ids_for_direction(consent_modeling, direction_id)
+        if not enrolled_ids:
+            return []
+        profiles_qs = profiles_qs.filter(abiturient_id__in=enrolled_ids)
+
+    profiles = profiles_qs.order_by("position")[:limit]
 
     rows: list[ApplicantOverlapRow] = []
     for profile in profiles:
@@ -132,6 +152,7 @@ def build_overlap_context(
     direction_id: int | None,
     limit: int,
     consent_modeling: dict[str, Any] | None = None,
+    enrolled_only: bool = False,
 ) -> dict[str, Any]:
     directions = get_user_applied_directions(user)
     selected_direction = None
@@ -152,11 +173,14 @@ def build_overlap_context(
             limit=limit,
             enrollment_labels=enrollment_labels,
             modeling_available=consent_modeling is not None,
+            enrolled_only=enrolled_only,
+            consent_modeling=consent_modeling,
         )
 
     return {
         "overlap_directions": directions,
         "overlap_selected_direction": selected_direction,
         "overlap_limit": limit,
+        "overlap_enrolled_only": enrolled_only,
         "overlap_rows": rows,
     }
