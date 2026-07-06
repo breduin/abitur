@@ -5,12 +5,17 @@ from typing import Any
 from apps.universities.models import StudyDirection
 
 
+NOT_ENROLLED_LABEL = "Не зачислен по модели"
+NO_MODELING_LABEL = "Моделирование не рассчитано"
+
+
 @dataclass
 class ApplicantOverlapRow:
     abiturient_id: str
     position: int
     nsummark: int | None
     other_applications: str
+    modeling_result: str
 
 
 def get_user_applied_directions(user) -> list[StudyDirection]:
@@ -41,16 +46,51 @@ def build_appearance_index() -> dict[str, list[tuple[str, str, int]]]:
     return index
 
 
+def build_enrollment_labels_by_abiturient(
+    consent_modeling: dict[str, Any] | None,
+) -> dict[str, str]:
+    if not consent_modeling:
+        return {}
+
+    from apps.universities.models import StudyDirection
+
+    direction_ids = [
+        int(direction_id)
+        for direction_id in (consent_modeling.get("enrollment_by_direction") or {})
+    ]
+    directions_by_id = {
+        direction.id: direction
+        for direction in StudyDirection.objects.filter(id__in=direction_ids).select_related(
+            "university"
+        )
+    }
+
+    labels: dict[str, str] = {}
+    for direction_id_str, abiturient_ids in (
+        consent_modeling.get("enrollment_by_direction") or {}
+    ).items():
+        direction = directions_by_id.get(int(direction_id_str))
+        if not direction:
+            continue
+        label = f"{direction.university.name} — {direction.name}"
+        for abiturient_id in abiturient_ids:
+            labels[abiturient_id] = label
+    return labels
+
+
 def get_applicant_overlap_rows(
     direction_id: int,
     *,
     limit: int = 50,
     appearance_index: dict[str, list[tuple[str, str, int]]] | None = None,
+    enrollment_labels: dict[str, str] | None = None,
+    modeling_available: bool = True,
 ) -> list[ApplicantOverlapRow]:
     from apps.admissions.models import ApplicantProfile
 
     limit = max(1, min(limit, 500))
     index = appearance_index if appearance_index is not None else build_appearance_index()
+    labels = enrollment_labels if enrollment_labels is not None else {}
     profiles = ApplicantProfile.objects.filter(direction_id=direction_id).order_by("position")[:limit]
 
     rows: list[ApplicantOverlapRow] = []
@@ -69,12 +109,18 @@ def get_applicant_overlap_rows(
         else:
             other_text = "Только в выбранном списке"
 
+        if not modeling_available:
+            modeling_result = NO_MODELING_LABEL
+        else:
+            modeling_result = labels.get(profile.abiturient_id, NOT_ENROLLED_LABEL)
+
         rows.append(
             ApplicantOverlapRow(
                 abiturient_id=profile.abiturient_id,
                 position=profile.position,
                 nsummark=profile.nsummark,
                 other_applications=other_text,
+                modeling_result=modeling_result,
             )
         )
     return rows
@@ -85,6 +131,7 @@ def build_overlap_context(
     *,
     direction_id: int | None,
     limit: int,
+    consent_modeling: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     directions = get_user_applied_directions(user)
     selected_direction = None
@@ -98,8 +145,14 @@ def build_overlap_context(
             selected_direction = directions[0]
 
     rows: list[ApplicantOverlapRow] = []
+    enrollment_labels = build_enrollment_labels_by_abiturient(consent_modeling)
     if selected_direction is not None:
-        rows = get_applicant_overlap_rows(selected_direction.id, limit=limit)
+        rows = get_applicant_overlap_rows(
+            selected_direction.id,
+            limit=limit,
+            enrollment_labels=enrollment_labels,
+            modeling_available=consent_modeling is not None,
+        )
 
     return {
         "overlap_directions": directions,

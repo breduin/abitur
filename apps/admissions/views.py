@@ -172,6 +172,7 @@ def analytics_view(request):
         request.user,
         direction_id=direction_id,
         limit=overlap_limit,
+        consent_modeling=(payload or {}).get("consent_modeling"),
     )
 
     return render(

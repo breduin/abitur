@@ -20,7 +20,9 @@ from apps.admissions.clients.parsed import ParsedApplicantRow
 from apps.admissions.clients.university_client import UniversityAPIClient
 from apps.admissions.models import ApplicantProfile, SyncJob
 from apps.admissions.services.applicant_overlap_service import (
+    NOT_ENROLLED_LABEL,
     build_appearance_index,
+    build_enrollment_labels_by_abiturient,
     get_applicant_overlap_rows,
     get_user_applied_directions,
 )
@@ -1141,6 +1143,27 @@ class ApplicantOverlapServiceTests(TestCase):
         self.assertEqual(rows[1].position, 2)
         self.assertEqual(rows[1].nsummark, 290)
         self.assertEqual(rows[1].other_applications, "Только в выбранном списке")
+
+    def test_overlap_rows_include_modeling_result(self):
+        index = build_appearance_index()
+        enrollment_labels = {"A100": "MSK Overlap — Лечебное дело"}
+        rows = get_applicant_overlap_rows(
+            self.spb_direction.id,
+            limit=10,
+            appearance_index=index,
+            enrollment_labels=enrollment_labels,
+        )
+        self.assertEqual(rows[0].modeling_result, "MSK Overlap — Лечебное дело")
+        self.assertEqual(rows[1].modeling_result, NOT_ENROLLED_LABEL)
+
+    def test_build_enrollment_labels_from_consent_modeling(self):
+        consent_modeling = {
+            "enrollment_by_direction": {
+                str(self.msk_direction.id): ["A100"],
+            }
+        }
+        labels = build_enrollment_labels_by_abiturient(consent_modeling)
+        self.assertEqual(labels["A100"], "MSK Overlap — Лечебное дело")
 
 
 class AnalyticsServiceTests(TestCase):
