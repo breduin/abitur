@@ -5,21 +5,7 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
     <h1 class="h3 mb-0">Мои позиции</h1>
-    <div>
-        <button
-            class="btn btn-accent"
-            hx-post="{% url 'refresh_data' %}"
-            hx-swap="none"
-            hx-indicator="#refresh-spinner"
-        >
-            Обновить данные сейчас
-        </button>
-        <span id="refresh-spinner" class="htmx-indicator spinner-border spinner-border-sm text-accent ms-2"></span>
-    </div>
 </div>
-<div id="refresh-message"></div>
-
-{% include "admissions/partials/sync_progress.html" %}
 
 <div class="card shadow-sm mb-4">
     <div class="card-header bg-primary-custom text-white">
@@ -44,7 +30,13 @@
                 {% for row in current_positions %}
                 <tr>
                     <td>{{ row.university_name }}</td>
-                    <td>{{ row.direction_name }}</td>
+                    <td>
+                        {% if row.source_url %}
+                        <a href="{{ row.source_url }}" target="_blank" rel="noopener noreferrer">{{ row.direction_name }}</a>
+                        {% else %}
+                        {{ row.direction_name }}
+                        {% endif %}
+                    </td>
                     <td>{% if row.seats is not None %}{{ row.seats }}{% else %}—{% endif %}</td>
                     <td>{% if row.applications_count is not None %}{{ row.applications_count }}{% else %}—{% endif %}</td>
                     <td>{% if row.position %}{{ row.position }}{% else %}—{% endif %}</td>

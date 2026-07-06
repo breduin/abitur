@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block title %}Загрузка данных — Абитуриент{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+    <h1 class="h3 mb-0">Загрузка данных</h1>
+    <div>
+        <button
+            class="btn btn-accent"
+            hx-post="{% url 'refresh_data' %}"
+            hx-swap="none"
+            hx-indicator="#refresh-spinner"
+        >
+            Обновить данные сейчас
+        </button>
+        <span id="refresh-spinner" class="htmx-indicator spinner-border spinner-border-sm text-accent ms-2"></span>
+    </div>
+</div>
+<div id="refresh-message"></div>
+
+{% include "admissions/partials/sync_progress.html" %}
+
+<p class="text-muted text-end mt-3 mb-0 small">
+    {% if last_data_update %}
+        Последнее обновление данных: {{ last_data_update|date:"d.m.Y H:i" }}
+    {% else %}
+        Данные ещё не обновлялись
+    {% endif %}
+</p>
+{% endblock %}

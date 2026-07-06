@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 from apps.admissions.models import ApplicantProfile, SyncJob
+from apps.admissions.services.source_url_service import get_direction_source_url
 from apps.universities.models import MedicalUniversity, StudyDirection
 
 
@@ -19,6 +20,7 @@ class PositionResult:
     is_applied: bool
     is_hypothetical: bool
     user_score: int | None = None
+    source_url: str | None = None
 
 
 class PositionService:
@@ -28,7 +30,7 @@ class PositionService:
     )
     NOT_SYNCED_STATUS = (
         "Данные по направлению ещё не загружены. "
-        "Нажмите «Обновить данные сейчас» и подождите несколько минут."
+        "Откройте «Загрузка данных» и нажмите «Обновить данные сейчас»."
     )
 
     def __init__(self, user):
@@ -50,6 +52,9 @@ class PositionService:
 
     def _direction_label(self, direction: StudyDirection) -> str:
         return direction.name
+
+    def _source_url(self, direction: StudyDirection) -> str | None:
+        return get_direction_source_url(direction)
 
     def _user_score_for_university(self, university: MedicalUniversity) -> int | None:
         if self.user.ege_total_score is None:
@@ -119,6 +124,7 @@ class PositionService:
                         is_applied=True,
                         is_hypothetical=False,
                         user_score=profile.nsummark,
+                        source_url=self._source_url(direction),
                     )
                 )
                 continue
@@ -143,6 +149,7 @@ class PositionService:
                         is_applied=is_applied,
                         is_hypothetical=True,
                         user_score=fields["nsummark"],
+                        source_url=self._source_url(direction),
                     )
                 )
                 continue
@@ -165,6 +172,7 @@ class PositionService:
                         is_applied=True,
                         is_hypothetical=True,
                         user_score=user_score,
+                        source_url=self._source_url(direction),
                     )
                 )
                 continue
@@ -186,6 +194,7 @@ class PositionService:
                     is_applied=False,
                     is_hypothetical=True,
                     user_score=user_score,
+                    source_url=self._source_url(direction),
                 )
             )
 

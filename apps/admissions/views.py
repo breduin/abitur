@@ -29,18 +29,23 @@ def _get_last_data_update():
     ).aggregate(last=Max("last_synced_at"))["last"]
 
 
-@login_required
-def dashboard_view(request):
-    service = PositionService(request.user)
+def _sync_page_context() -> dict:
     sync_context = get_sync_progress_context()
-    sync_warnings = MedicalUniversity.objects.filter(
-        is_active=True,
-    ).exclude(sync_warning="")
-    rate_limited_jobs = SyncJob.objects.filter(
+    sync_context["rate_limited_jobs"] = SyncJob.objects.filter(
         status=SyncJob.Status.RATE_LIMITED,
         next_retry_at__isnull=False,
         next_retry_at__gt=timezone.now(),
     ).select_related("direction__university")
+    sync_context["sync_warnings"] = MedicalUniversity.objects.filter(
+        is_active=True,
+    ).exclude(sync_warning="")
+    sync_context["last_data_update"] = _get_last_data_update()
+    return sync_context
+
+
+@login_required
+def dashboard_view(request):
+    service = PositionService(request.user)
 
     snapshot = AnalyticsSnapshot.objects.order_by("-computed_at").first()
     if snapshot is None and ApplicantProfile.objects.exists():
@@ -66,11 +71,17 @@ def dashboard_view(request):
                 consent_modeling,
             ),
             "consent_modeling_computed_at": snapshot.computed_at if snapshot else None,
-            "rate_limited_jobs": rate_limited_jobs,
-            "sync_warnings": sync_warnings,
             "last_data_update": _get_last_data_update(),
-            **sync_context,
         },
+    )
+
+
+@login_required
+def sync_status_view(request):
+    return render(
+        request,
+        "admissions/sync_status.html",
+        _sync_page_context(),
     )
 
 
@@ -79,7 +90,7 @@ def dashboard_view(request):
 def refresh_data_view(request):
     mark_force_sync_started()
     sync_all_active_universities.delay(force=True)
-    sync_context = get_sync_progress_context()
+    sync_context = _sync_page_context()
     if request.headers.get("HX-Request"):
         response = render(
             request,
@@ -87,19 +98,12 @@ def refresh_data_view(request):
             sync_context,
         )
         return response
-    return redirect("dashboard")
+    return redirect("sync_status")
 
 
 @login_required
 def refresh_status_partial(request):
-    sync_context = get_sync_progress_context()
-    sync_context["rate_limited_jobs"] = SyncJob.objects.filter(
-        status=SyncJob.Status.RATE_LIMITED,
-    ).select_related("direction__university")
-    sync_context["sync_warnings"] = MedicalUniversity.objects.filter(
-        is_active=True,
-    ).exclude(sync_warning="")
-    return render(request, "admissions/partials/sync_progress.html", sync_context)
+    return render(request, "admissions/partials/sync_progress.html", _sync_page_context())
 
 
 def _build_chart_data(payload: dict | None) -> dict | None:

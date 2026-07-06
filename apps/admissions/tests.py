@@ -225,6 +225,40 @@ class SyncStatusServiceTests(TestCase):
         response = self.client.get("/api/refresh/status/")
         self.assertEqual(response.status_code, 302)
 
+    def test_sync_status_page_requires_login(self):
+        response = self.client.get("/sync/")
+        self.assertEqual(response.status_code, 302)
+
+    def test_sync_status_page_for_verified_user(self):
+        User.objects.create_user(abiturient_id="sync-user", is_verified=True)
+        self.client.post("/login/", {"abiturient_id": "sync-user"})
+        response = self.client.get("/sync/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Загрузка данных")
+        self.assertContains(response, "Обновить данные сейчас")
+
+
+class SourceUrlServiceTests(TestCase):
+    def test_source_url_from_filter_params(self):
+        university = MedicalUniversity.objects.create(
+            name="Педиатрический (СПб)",
+            api_config={"provider": "gpmu", "base_url": "https://spiski.gpmu.org"},
+        )
+        direction = StudyDirection.objects.create(
+            university=university,
+            name="Лечебное дело",
+            filter_params={
+                "group_id": "kg_4",
+                "source_url": "https://spiski.gpmu.org/spisok-podavshikh",
+            },
+        )
+        from apps.admissions.services.source_url_service import get_direction_source_url
+
+        self.assertEqual(
+            get_direction_source_url(direction),
+            "https://spiski.gpmu.org/spisok-podavshikh",
+        )
+
 
 class PositionServiceTests(TestCase):
     def setUp(self):
@@ -285,6 +319,15 @@ class PositionServiceTests(TestCase):
         self.assertEqual(len(positions), 1)
         self.assertEqual(positions[0].position, 5)
         self.assertFalse(positions[0].is_hypothetical)
+
+    def test_current_positions_include_source_url(self):
+        self.direction.filter_params = {
+            "source_url": "https://example.com/list",
+        }
+        self.direction.save(update_fields=["filter_params"])
+        service = PositionService(self.user)
+        positions = service.get_current_positions()
+        self.assertEqual(positions[0].source_url, "https://example.com/list")
 
     def test_forecast_among_other_priority_one(self):
         service = PositionService(self.user)
