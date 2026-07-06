@@ -22,8 +22,8 @@ class RateLimitError(UniversityAPIError):
 
 class BaseHTTPClient:
     DEFAULT_TIMEOUT = 30
-    MAX_RETRIES = 3
-    BACKOFF_BASE = 1.0
+    MAX_RETRIES = 5
+    BACKOFF_BASE = 2.0
 
     def __init__(self, api_config: dict[str, Any], session: requests.Session | None = None):
         self.api_config = api_config

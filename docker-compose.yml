@@ -1,5 +1,11 @@
+x-app-hosts: &app-hosts
+  # spiski.gpmu.org есть не во всех публичных DNS; без записи sync GPMU падает в Docker.
+    extra_hosts:
+    - "spiski.gpmu.org:${GPMU_FALLBACK_IP:-89.169.170.237}"
+
 services:
   web:
+    <<: *app-hosts
     build: .
     command: gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 2
     ports:
@@ -18,6 +24,7 @@ services:
       - redis
 
   celery:
+    <<: *app-hosts
     build: .
     entrypoint: ["/bin/bash", "/app/entrypoint-worker.sh"]
     command: celery -A config worker -l info --concurrency=1
@@ -36,6 +43,7 @@ services:
       - web
 
   celery-beat:
+    <<: *app-hosts
     build: .
     entrypoint: ["/bin/bash", "/app/entrypoint-worker.sh"]
     command: celery -A config beat -l info

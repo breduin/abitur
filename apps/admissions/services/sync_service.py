@@ -12,6 +12,12 @@ from apps.universities.models import MedicalUniversity, StudyDirection
 logger = logging.getLogger(__name__)
 
 PROGRESS_FLUSH_EVERY = 25
+NETWORK_RETRY_SECONDS = 300
+
+
+def _is_transient_network_error(exc: UniversityAPIError) -> bool:
+    message = str(exc).lower()
+    return "сетевая ошибка" in message or "name resolution" in message
 
 
 def get_or_create_sync_job(direction: StudyDirection) -> SyncJob:
@@ -151,6 +157,31 @@ def sync_direction(
         return {"status": "rate_limited", "retry_after": retry_after}
 
     except UniversityAPIError as exc:
+        if _is_transient_network_error(exc):
+            job.status = SyncJob.Status.RATE_LIMITED
+            job.next_retry_at = timezone.now() + timedelta(seconds=NETWORK_RETRY_SECONDS)
+            job.last_error = str(exc)
+            job.records_fetched = records
+            job.save(
+                update_fields=[
+                    "status",
+                    "next_retry_at",
+                    "last_error",
+                    "records_fetched",
+                    "updated_at",
+                ]
+            )
+            logger.warning(
+                "Transient network error for direction %s, retry in %ss",
+                direction_id,
+                NETWORK_RETRY_SECONDS,
+            )
+            return {
+                "status": "network_retry",
+                "retry_after": NETWORK_RETRY_SECONDS,
+                "error": str(exc),
+            }
+
         job.status = SyncJob.Status.ERROR
         job.last_error = str(exc)
         job.records_fetched = records

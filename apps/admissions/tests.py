@@ -14,7 +14,7 @@ from apps.admissions.clients.sechenov_html_parser import parse_page_rows
 from apps.admissions.clients.szgmu_client import SZGMUClient
 from apps.admissions.clients.szgmu_html_parser import parse_budget_section
 from apps.admissions.clients.szgmu_html_parser import rows_to_dicts as szgmu_rows_to_dicts
-from apps.admissions.clients.base import RateLimitError
+from apps.admissions.clients.base import RateLimitError, UniversityAPIError
 from apps.admissions.clients.gpmu_client import GPMUClient
 from apps.admissions.clients.parsed import ParsedApplicantRow
 from apps.admissions.clients.university_client import UniversityAPIClient
@@ -139,6 +139,20 @@ class SyncServiceTests(TestCase):
         self.assertEqual(result["status"], "rate_limited")
         job = SyncJob.objects.get(direction=self.direction)
         self.assertEqual(job.status, SyncJob.Status.RATE_LIMITED)
+
+    @patch("apps.admissions.services.sync_service.get_university_client")
+    def test_sync_direction_schedules_retry_on_transient_network_error(self, mock_get_client):
+        mock_client = mock_get_client.return_value
+        mock_client.fetch_csrf_token.side_effect = UniversityAPIError(
+            "Сетевая ошибка: Failed to resolve 'spiski.gpmu.org'"
+        )
+        mock_client.last_seats = None
+
+        result = sync_direction(self.direction.id, force=True, check_interval=False)
+        self.assertEqual(result["status"], "network_retry")
+        job = SyncJob.objects.get(direction=self.direction)
+        self.assertEqual(job.status, SyncJob.Status.RATE_LIMITED)
+        self.assertIsNotNone(job.next_retry_at)
 
     @patch("apps.admissions.services.sync_service.get_university_client")
     def test_sync_flushes_records_fetched_incrementally(self, mock_get_client):
@@ -360,6 +374,27 @@ class GPMUClientTests(SimpleTestCase):
         self.assertFalse(GPMUClient._should_stop_at_score(None, 200))
         self.assertFalse(GPMUClient._should_stop_at_score(250, 200))
         self.assertTrue(GPMUClient._should_stop_at_score(199, 200))
+
+    def test_fallback_ip_used_only_after_dns_error(self):
+        client = GPMUClient(
+            {
+                "base_url": "https://spiski.gpmu.org",
+                "fallback_ip": "89.169.170.237",
+            }
+        )
+        self.assertEqual(client.base_url, "https://spiski.gpmu.org")
+
+        with patch.object(client, "_fetch_group_page_once") as mock_once:
+            mock_once.side_effect = [
+                UniversityAPIError(
+                    "Сетевая ошибка: Failed to resolve 'spiski.gpmu.org'"
+                ),
+                {"rows": [], "seats": {}},
+            ]
+            client.fetch_group_page("kg_4", page=1, page_size=1)
+            self.assertEqual(mock_once.call_count, 2)
+            self.assertFalse(mock_once.call_args_list[0].kwargs["use_fallback"])
+            self.assertTrue(mock_once.call_args_list[1].kwargs["use_fallback"])
 
     @patch("apps.admissions.clients.gpmu_client.GPMUClient.fetch_group_page")
     def test_fetch_stops_after_threshold_not_on_zeros(self, mock_page):
@@ -913,6 +948,36 @@ class SPBUClientTests(SimpleTestCase):
         self.assertEqual(parsed_regular.abiturient_id, "1542510")
         self.assertEqual(parsed_regular.nsummark, 308)
         self.assertEqual(parsed_regular.npriority_ssp, 2)
+
+    @patch("apps.admissions.clients.spbu_client.SPBUClient.fetch_report_meta")
+    def test_build_request_body_uses_report_meta(self, mock_meta):
+        mock_meta.return_value = {
+            "id": "report-1",
+            "report_upload_id": "upload-1",
+            "sections": [
+                {
+                    "specialities": [
+                        {
+                            "id": "spec-1",
+                            "code": "31.05.01",
+                            "name": "Лечебное дело",
+                        }
+                    ]
+                }
+            ],
+        }
+        client = SPBUClient({"base_url": "https://enrollelists.spbu.ru"})
+        body = client._build_request_body(
+            {
+                "filters": {
+                    "program_name": "Лечебное дело",
+                    "speciality": "31.05.01|Лечебное дело",
+                }
+            }
+        )
+        self.assertEqual(body["report_priem_list_02_id"], "report-1")
+        self.assertEqual(body["speciality_ids"], ["spec-1"])
+        self.assertEqual(body["filters"]["report_upload_id"], "upload-1")
 
     @patch("apps.admissions.clients.spbu_client.SPBUClient.fetch_list_html")
     def test_fetch_skips_olympiad_scores_at_threshold(self, mock_html):

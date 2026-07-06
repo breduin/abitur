@@ -42,6 +42,7 @@ PEDIATRIC_API_CONFIG = {
     "provider": "gpmu",
     "base_url": "https://spiski.gpmu.org",
     "page_size": 100,
+    "fallback_ip": "89.169.170.237",
 }
 
 PEDIATRIC_DIRECTIONS = [
@@ -86,8 +87,9 @@ def _ensure_university_directions(university, api_config, directions, *, city=No
     from apps.universities.models import MedicalUniversity, StudyDirection
 
     university_updates = {}
-    if not university.api_config:
-        university_updates["api_config"] = api_config
+    merged_api_config = {**(university.api_config or {}), **api_config}
+    if university.api_config != merged_api_config:
+        university_updates["api_config"] = merged_api_config
     if city and university.city != city:
         university_updates["city"] = city
     if university_updates:
@@ -311,8 +313,8 @@ SPBU_DIRECTIONS = [
         "name": "Лечебное дело",
         "seats": 21,
         "filter_params": {
-            "report_priem_list_02_id": "019f329a-c2d0-7107-8eea-e92731eaf3d1",
-            "speciality_ids": ["7dd29c4f-9a88-47e3-afa8-571940bf95fa"],
+            "report_priem_list_02_id": "019f360a-157c-7148-8c9c-1954a37747d2",
+            "speciality_ids": ["43934249-e370-4cf5-a035-e012ad199977"],
             "filters": {
                 "education_level_sort_order": "1",
                 "report_upload_id": "",

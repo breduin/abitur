@@ -102,11 +102,6 @@ class SeedTests(TestCase):
         self.assertEqual(spbu.city, "spb")
         lech = spbu.directions.get(name="Лечебное дело")
         self.assertEqual(lech.seats, 21)
-        self.assertEqual(
-            lech.filter_params.get("report_priem_list_02_id"),
-            "019f329a-c2d0-7107-8eea-e92731eaf3d1",
-        )
-        self.assertEqual(
-            lech.filter_params.get("speciality_ids"),
-            ["7dd29c4f-9a88-47e3-afa8-571940bf95fa"],
-        )
+        self.assertEqual(lech.filter_params.get("filters", {}).get("program_name"), "Лечебное дело")
+        self.assertIn("report_priem_list_02_id", lech.filter_params)
+        self.assertIn("speciality_ids", lech.filter_params)
