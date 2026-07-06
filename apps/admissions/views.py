@@ -6,12 +6,14 @@ from django.views.decorators.http import require_http_methods
 
 from apps.admissions.models import AnalyticsSnapshot, ApplicantProfile, SyncJob
 from apps.admissions.services.analytics_service import (
+    GROUP_COLORS,
     GROUP_LABELS,
     GROUP_MUSCOVITES,
     GROUP_PETERSBURGHERS,
     GROUP_VISITORS,
     save_analytics_snapshot,
 )
+from apps.admissions.services.applicant_overlap_service import build_overlap_context
 from apps.admissions.services.consent_modeling_service import (
     get_user_consent_projection,
 )
@@ -106,33 +108,33 @@ def refresh_status_partial(request):
     return render(request, "admissions/partials/sync_progress.html", _sync_page_context())
 
 
+def _build_overall_groups(payload: dict | None) -> list[dict]:
+    if not payload:
+        return []
+    overall = payload.get("overall") or {}
+    groups = []
+    for key in (GROUP_PETERSBURGHERS, GROUP_MUSCOVITES, GROUP_VISITORS):
+        stat = overall.get(key) or {}
+        groups.append(
+            {
+                "key": key,
+                "label": GROUP_LABELS[key],
+                "count": stat.get("count", 0),
+                "percent": stat.get("percent", 0),
+                "color": GROUP_COLORS[key],
+            }
+        )
+    return groups
+
+
 def _build_chart_data(payload: dict | None) -> dict | None:
     if not payload:
         return None
 
-    overall = payload.get("overall") or {}
+    overall_groups = _build_overall_groups(payload)
     return {
-        "total": overall.get("total", 0),
-        "overallGroups": [
-            {
-                "key": GROUP_PETERSBURGHERS,
-                "label": GROUP_LABELS[GROUP_PETERSBURGHERS],
-                "count": (overall.get(GROUP_PETERSBURGHERS) or {}).get("count", 0),
-                "percent": (overall.get(GROUP_PETERSBURGHERS) or {}).get("percent", 0),
-            },
-            {
-                "key": GROUP_MUSCOVITES,
-                "label": GROUP_LABELS[GROUP_MUSCOVITES],
-                "count": (overall.get(GROUP_MUSCOVITES) or {}).get("count", 0),
-                "percent": (overall.get(GROUP_MUSCOVITES) or {}).get("percent", 0),
-            },
-            {
-                "key": GROUP_VISITORS,
-                "label": GROUP_LABELS[GROUP_VISITORS],
-                "count": (overall.get(GROUP_VISITORS) or {}).get("count", 0),
-                "percent": (overall.get(GROUP_VISITORS) or {}).get("percent", 0),
-            },
-        ],
+        "total": overall_groups and payload.get("overall", {}).get("total", 0) or 0,
+        "overallGroups": overall_groups,
         "directions": payload.get("directions") or [],
         "fullSpbCoverage": (payload.get("full_spb_coverage") or {}).get("directions") or [],
         "spbLechCoverage": (payload.get("spb_lech_coverage") or {}).get("directions") or [],
@@ -155,14 +157,32 @@ def analytics_view(request):
         payload = save_analytics_snapshot()
         snapshot = AnalyticsSnapshot.objects.order_by("-computed_at").first()
 
+    try:
+        overlap_limit = int(request.GET.get("limit", 50))
+    except (TypeError, ValueError):
+        overlap_limit = 50
+
+    selected_direction_id = request.GET.get("direction_id")
+    try:
+        direction_id = int(selected_direction_id) if selected_direction_id else None
+    except (TypeError, ValueError):
+        direction_id = None
+
+    overlap_context = build_overlap_context(
+        request.user,
+        direction_id=direction_id,
+        limit=overlap_limit,
+    )
+
     return render(
         request,
         "admissions/analytics.html",
         {
             "analytics": payload,
             "chart_data": _build_chart_data(payload),
+            "overall_groups": _build_overall_groups(payload),
             "computed_at": snapshot.computed_at if snapshot else None,
-            "group_labels": GROUP_LABELS,
             "last_data_update": _get_last_data_update(),
+            **overlap_context,
         },
     )

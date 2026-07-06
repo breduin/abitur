@@ -19,6 +19,11 @@ from apps.admissions.clients.gpmu_client import GPMUClient
 from apps.admissions.clients.parsed import ParsedApplicantRow
 from apps.admissions.clients.university_client import UniversityAPIClient
 from apps.admissions.models import ApplicantProfile, SyncJob
+from apps.admissions.services.applicant_overlap_service import (
+    build_appearance_index,
+    get_applicant_overlap_rows,
+    get_user_applied_directions,
+)
 from apps.admissions.services.analytics_service import (
     GROUP_MUSCOVITES,
     GROUP_PETERSBURGHERS,
@@ -1060,6 +1065,78 @@ class SPBUClientTests(SimpleTestCase):
         self.assertEqual(rows[0]["Уникальный код поступающего"], "1000001")
         self.assertEqual(rows[1]["Уникальный код поступающего"], "1000002")
         self.assertEqual(client.last_seats, 21)
+
+
+class ApplicantOverlapServiceTests(TestCase):
+    def setUp(self):
+        self.spb_uni = MedicalUniversity.objects.create(
+            name="SPB Overlap",
+            city=MedicalUniversity.City.SPB,
+        )
+        self.msk_uni = MedicalUniversity.objects.create(
+            name="MSK Overlap",
+            city=MedicalUniversity.City.MSK,
+        )
+        self.spb_direction = StudyDirection.objects.create(
+            university=self.spb_uni,
+            name="Лечебное дело",
+            filter_params={},
+            seats=10,
+        )
+        self.msk_direction = StudyDirection.objects.create(
+            university=self.msk_uni,
+            name="Лечебное дело",
+            filter_params={},
+            seats=10,
+        )
+        self.user = User.objects.create_user(abiturient_id="9001", is_verified=True)
+        self.user.applied_universities.add(self.spb_uni, self.msk_uni)
+
+        ApplicantProfile.objects.create(
+            direction=self.spb_direction,
+            abiturient_id="A100",
+            position=1,
+            sstatus_ssp="Участвует",
+            nsummark=300,
+            npriority_ssp=1,
+        )
+        ApplicantProfile.objects.create(
+            direction=self.msk_direction,
+            abiturient_id="A100",
+            position=5,
+            sstatus_ssp="Участвует",
+            nsummark=295,
+            npriority_ssp=2,
+        )
+        ApplicantProfile.objects.create(
+            direction=self.spb_direction,
+            abiturient_id="A200",
+            position=2,
+            sstatus_ssp="Участвует",
+            nsummark=290,
+            npriority_ssp=1,
+        )
+
+    def test_get_user_applied_directions(self):
+        directions = get_user_applied_directions(self.user)
+        self.assertEqual(len(directions), 2)
+        self.assertEqual({direction.id for direction in directions}, {
+            self.spb_direction.id,
+            self.msk_direction.id,
+        })
+
+    def test_overlap_rows_show_other_lists(self):
+        index = build_appearance_index()
+        rows = get_applicant_overlap_rows(
+            self.spb_direction.id,
+            limit=10,
+            appearance_index=index,
+        )
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0].abiturient_id, "A100")
+        self.assertIn("MSK Overlap", rows[0].other_applications)
+        self.assertEqual(rows[1].abiturient_id, "A200")
+        self.assertEqual(rows[1].other_applications, "Только в выбранном списке")
 
 
 class AnalyticsServiceTests(TestCase):

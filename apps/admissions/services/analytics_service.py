@@ -18,6 +18,12 @@ GROUP_LABELS = {
     GROUP_VISITORS: "Приезжие",
 }
 
+GROUP_COLORS = {
+    GROUP_PETERSBURGHERS: "#4DA6FF",
+    GROUP_MUSCOVITES: "#2563a8",
+    GROUP_VISITORS: "#FF6B9D",
+}
+
 
 @dataclass
 class GroupStat:

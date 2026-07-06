@@ -306,3 +306,55 @@ body {
 .sync-progress-table th {
     vertical-align: middle;
 }
+
+.analytics-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.analytics-panel.is-collapsed .analytics-panel__body {
+    display: none;
+}
+
+.analytics-panel__toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    cursor: pointer;
+}
+
+.analytics-panel__toggle:focus-visible {
+    outline: 2px solid rgba(255, 255, 255, 0.85);
+    outline-offset: -2px;
+}
+
+.analytics-panel__chevron {
+    width: 0.65rem;
+    height: 0.65rem;
+    border-right: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+    transform: rotate(45deg);
+    transition: transform 0.2s ease;
+    flex-shrink: 0;
+    margin-top: -0.2rem;
+}
+
+.analytics-panel:not(.is-collapsed) .analytics-panel__chevron {
+    transform: rotate(-135deg);
+    margin-top: 0.2rem;
+}
+
+.analytics-overlap-form {
+    display: grid;
+    grid-template-columns: minmax(220px, 1.4fr) minmax(120px, 0.5fr) auto;
+    gap: 0.75rem;
+    align-items: end;
+}
+
+@media (max-width: 767.98px) {
+    .analytics-overlap-form {
+        grid-template-columns: 1fr;
+    }
+}

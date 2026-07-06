@@ -3,7 +3,7 @@
 {% block title %}Аналитика — Абитуриент{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
     <h1 class="h3 mb-0">Аналитика</h1>
     {% if computed_at %}
     <p class="text-muted mb-0 small">
@@ -12,148 +12,152 @@
     {% endif %}
 </div>
 
+{% if analytics %}
+<div class="analytics-toolbar mb-4">
+    <button type="button" class="btn btn-outline-secondary btn-sm" id="analytics-expand-all">
+        Развернуть всё
+    </button>
+    <button type="button" class="btn btn-outline-secondary btn-sm" id="analytics-collapse-all">
+        Свернуть всё
+    </button>
+</div>
+{% endif %}
+
 {% if not analytics %}
 <div class="alert alert-info">
-    Данные для аналитики ещё не загружены. Нажмите «Обновить данные сейчас» на главной странице.
+    Данные для аналитики ещё не загружены. Откройте
+    <a href="{% url 'sync_status' %}">Загрузка данных</a> и нажмите «Обновить данные сейчас».
 </div>
 {% else %}
 
-<div class="card shadow-sm mb-4 overflow-hidden">
-    <div class="card-header bg-primary-custom text-white">
+<section class="card shadow-sm mb-4 overflow-hidden analytics-panel is-collapsed" data-analytics-panel>
+    <button type="button" class="card-header bg-primary-custom text-white analytics-panel__toggle w-100 border-0" aria-expanded="false">
         <h2 class="h5 mb-0">Сводка по группам абитуриентов</h2>
-    </div>
-    <div class="analytics-hero">
-        <div class="analytics-donut-shell">
-            <canvas id="overall-donut" aria-label="Распределение абитуриентов по группам"></canvas>
-            <div class="analytics-donut-center">
-                <div class="analytics-donut-center-value">{{ analytics.overall.total }}</div>
-                <div class="analytics-donut-center-label">абитуриентов</div>
+        <span class="analytics-panel__chevron" aria-hidden="true"></span>
+    </button>
+    <div class="analytics-panel__body">
+        <div class="analytics-hero">
+            <div class="analytics-donut-shell">
+                <canvas id="overall-donut" aria-label="Распределение абитуриентов по группам"></canvas>
+                <div class="analytics-donut-center">
+                    <div class="analytics-donut-center-value">{{ analytics.overall.total }}</div>
+                    <div class="analytics-donut-center-label">абитуриентов</div>
+                </div>
+            </div>
+            <div class="analytics-legend">
+                {% for group in overall_groups %}
+                <div class="analytics-legend-item">
+                    <span class="analytics-legend-dot" style="background:{{ group.color }};"></span>
+                    <div>
+                        <div class="analytics-legend-title">{{ group.label }}</div>
+                        <div class="analytics-legend-meta">
+                            <strong>{{ group.count }}</strong>
+                            · {{ group.percent }}%
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
             </div>
         </div>
-        <div class="analytics-legend">
-            <div class="analytics-legend-item">
-                <span class="analytics-legend-dot" style="background:#4DA6FF;"></span>
-                <div>
-                    <div class="analytics-legend-title">{{ group_labels.petersburgers }}</div>
-                    <div class="analytics-legend-meta">
-                        <strong>{{ analytics.overall.petersburgers.count }}</strong>
-                        · {{ analytics.overall.petersburgers.percent }}%
-                    </div>
-                </div>
-            </div>
-            <div class="analytics-legend-item">
-                <span class="analytics-legend-dot" style="background:#2563a8;"></span>
-                <div>
-                    <div class="analytics-legend-title">{{ group_labels.muscovites }}</div>
-                    <div class="analytics-legend-meta">
-                        <strong>{{ analytics.overall.muscovites.count }}</strong>
-                        · {{ analytics.overall.muscovites.percent }}%
-                    </div>
-                </div>
-            </div>
-            <div class="analytics-legend-item">
-                <span class="analytics-legend-dot" style="background:#FF6B9D;"></span>
-                <div>
-                    <div class="analytics-legend-title">{{ group_labels.visitors }}</div>
-                    <div class="analytics-legend-meta">
-                        <strong>{{ analytics.overall.visitors.count }}</strong>
-                        · {{ analytics.overall.visitors.percent }}%
-                    </div>
-                </div>
-            </div>
+        <div class="card-body border-top py-2">
+            <p class="text-muted small mb-0">
+                <strong>Петербуржцы</strong> — только вузы СПб.
+                <strong>Москвичи</strong> — только московские.
+                <strong>Приезжие</strong> — заявки и в СПб, и в Москве.
+            </p>
         </div>
     </div>
-    <div class="card-body border-top py-2">
-        <p class="text-muted small mb-0">
-            <strong>Петербуржцы</strong> — только вузы СПб.
-            <strong>Москвичи</strong> — только московские.
-            <strong>Приезжие</strong> — заявки и в СПб, и в Москве.
-        </p>
-    </div>
-</div>
+</section>
 
-<div class="card shadow-sm mb-4 overflow-hidden">
-    <div class="card-header bg-primary-custom text-white">
+<section class="card shadow-sm mb-4 overflow-hidden analytics-panel is-collapsed" data-analytics-panel>
+    <button type="button" class="card-header bg-primary-custom text-white analytics-panel__toggle w-100 border-0" aria-expanded="false">
         <h2 class="h5 mb-0">Подали во все направления СПб</h2>
-    </div>
-    <div class="card-body pb-2">
-        <p class="mb-1">
-            <strong>{{ analytics.full_spb_coverage.total }}</strong>
-            абитуриентов подали заявления во все
-            <strong>{{ analytics.full_spb_coverage.directions_count }}</strong>
-            направлений петербургских вузов.
-        </p>
-        <p class="text-muted small mb-0">
-            Доля группы «все СПб» среди абитуриентов каждого направления.
-        </p>
-    </div>
-    <div class="analytics-coverage-layout">
-        <div class="analytics-coverage-chart">
-            <canvas id="full-spb-coverage-chart" aria-label="Доля группы «все СПб» по направлениям"></canvas>
+        <span class="analytics-panel__chevron" aria-hidden="true"></span>
+    </button>
+    <div class="analytics-panel__body">
+        <div class="card-body pb-2">
+            <p class="mb-1">
+                <strong>{{ analytics.full_spb_coverage.total }}</strong>
+                абитуриентов подали заявления во все
+                <strong>{{ analytics.full_spb_coverage.directions_count }}</strong>
+                направлений петербургских вузов.
+            </p>
+            <p class="text-muted small mb-0">
+                Доля группы «все СПб» среди абитуриентов каждого направления.
+            </p>
         </div>
-        <div class="analytics-coverage-legend">
-            {% for row in analytics.full_spb_coverage.directions %}
-            <div class="analytics-legend-item">
-                <span class="analytics-legend-dot" style="background:#4DA6FF;"></span>
-                <div>
-                    <div class="analytics-legend-title">{{ row.university_name }}</div>
-                    <div class="analytics-legend-meta">
-                        {{ row.direction_name }} ·
-                        <strong>{{ row.count }}</strong> из {{ row.direction_total }}
-                        · {{ row.percent }}%
+        <div class="analytics-coverage-layout">
+            <div class="analytics-coverage-chart">
+                <canvas id="full-spb-coverage-chart" aria-label="Доля группы «все СПб» по направлениям"></canvas>
+            </div>
+            <div class="analytics-coverage-legend">
+                {% for row in analytics.full_spb_coverage.directions %}
+                <div class="analytics-legend-item">
+                    <span class="analytics-legend-dot" style="background:#4DA6FF;"></span>
+                    <div>
+                        <div class="analytics-legend-title">{{ row.university_name }}</div>
+                        <div class="analytics-legend-meta">
+                            {{ row.direction_name }} ·
+                            <strong>{{ row.count }}</strong> из {{ row.direction_total }}
+                            · {{ row.percent }}%
+                        </div>
                     </div>
                 </div>
+                {% empty %}
+                <p class="text-muted small mb-0">Нет данных по направлениям СПб.</p>
+                {% endfor %}
             </div>
-            {% empty %}
-            <p class="text-muted small mb-0">Нет данных по направлениям СПб.</p>
-            {% endfor %}
         </div>
     </div>
-</div>
+</section>
 
-<div class="card shadow-sm mb-4 overflow-hidden">
-    <div class="card-header bg-primary-custom text-white">
+<section class="card shadow-sm mb-4 overflow-hidden analytics-panel is-collapsed" data-analytics-panel>
+    <button type="button" class="card-header bg-primary-custom text-white analytics-panel__toggle w-100 border-0" aria-expanded="false">
         <h2 class="h5 mb-0">Подали на «Лечебное дело» во всех СПб вузах</h2>
-    </div>
-    <div class="card-body pb-2">
-        <p class="mb-1">
-            <strong>{{ analytics.spb_lech_coverage.total }}</strong>
-            абитуриентов есть в списках «Лечебное дело» у всех
-            <strong>{{ analytics.spb_lech_coverage.directions_count }}</strong>
-            петербургских вузов, где это направление отслеживается.
-        </p>
-        <p class="text-muted small mb-0">
-            Доля этой группы среди абитуриентов «Лечебное дело» в каждом вузе.
-        </p>
-    </div>
-    <div class="analytics-coverage-layout">
-        <div class="analytics-coverage-chart">
-            <canvas id="spb-lech-coverage-chart" aria-label="Доля группы «Лечебное дело во всех СПб» по вузам"></canvas>
+        <span class="analytics-panel__chevron" aria-hidden="true"></span>
+    </button>
+    <div class="analytics-panel__body">
+        <div class="card-body pb-2">
+            <p class="mb-1">
+                <strong>{{ analytics.spb_lech_coverage.total }}</strong>
+                абитуриентов есть в списках «Лечебное дело» у всех
+                <strong>{{ analytics.spb_lech_coverage.directions_count }}</strong>
+                петербургских вузов, где это направление отслеживается.
+            </p>
+            <p class="text-muted small mb-0">
+                Доля этой группы среди абитуриентов «Лечебное дело» в каждом вузе.
+            </p>
         </div>
-        <div class="analytics-coverage-legend">
-            {% for row in analytics.spb_lech_coverage.directions %}
-            <div class="analytics-legend-item">
-                <span class="analytics-legend-dot" style="background:#2563a8;"></span>
-                <div>
-                    <div class="analytics-legend-title">{{ row.university_name }}</div>
-                    <div class="analytics-legend-meta">
-                        <strong>{{ row.count }}</strong> из {{ row.direction_total }}
-                        · {{ row.percent }}%
+        <div class="analytics-coverage-layout">
+            <div class="analytics-coverage-chart">
+                <canvas id="spb-lech-coverage-chart" aria-label="Доля группы «Лечебное дело во всех СПб» по вузам"></canvas>
+            </div>
+            <div class="analytics-coverage-legend">
+                {% for row in analytics.spb_lech_coverage.directions %}
+                <div class="analytics-legend-item">
+                    <span class="analytics-legend-dot" style="background:#2563a8;"></span>
+                    <div>
+                        <div class="analytics-legend-title">{{ row.university_name }}</div>
+                        <div class="analytics-legend-meta">
+                            <strong>{{ row.count }}</strong> из {{ row.direction_total }}
+                            · {{ row.percent }}%
+                        </div>
                     </div>
                 </div>
+                {% empty %}
+                <p class="text-muted small mb-0">Нет данных по «Лечебному делу» в СПб.</p>
+                {% endfor %}
             </div>
-            {% empty %}
-            <p class="text-muted small mb-0">Нет данных по «Лечебному делу» в СПб.</p>
-            {% endfor %}
         </div>
     </div>
-</div>
+</section>
 
-<div class="card shadow-sm mb-4">
-    <div class="card-header bg-primary-custom text-white">
+<section class="card shadow-sm mb-4 analytics-panel is-collapsed" data-analytics-panel>
+    <button type="button" class="card-header bg-primary-custom text-white analytics-panel__toggle w-100 border-0" aria-expanded="false">
         <h2 class="h5 mb-0">Направления: места и заявления</h2>
-    </div>
-    <div class="table-responsive">
+        <span class="analytics-panel__chevron" aria-hidden="true"></span>
+    </button>
+    <div class="analytics-panel__body table-responsive">
         <table class="table table-hover mb-0">
             <thead>
                 <tr>
@@ -175,13 +179,14 @@
             </tbody>
         </table>
     </div>
-</div>
+</section>
 
-<div class="card shadow-sm mb-4">
-    <div class="card-header bg-accent text-white">
+<section class="card shadow-sm mb-4 analytics-panel is-collapsed" data-analytics-panel>
+    <button type="button" class="card-header bg-accent text-white analytics-panel__toggle w-100 border-0" aria-expanded="false">
         <h2 class="h5 mb-0">Группы по направлениям</h2>
-    </div>
-    <div class="analytics-direction-grid">
+        <span class="analytics-panel__chevron" aria-hidden="true"></span>
+    </button>
+    <div class="analytics-panel__body analytics-direction-grid">
         {% for row in analytics.directions %}
         <div class="analytics-direction-card">
             {% if row.city == "spb" %}
@@ -205,13 +210,14 @@
         </div>
         {% endfor %}
     </div>
-</div>
+</section>
 
-<div class="card shadow-sm">
-    <div class="card-header bg-accent text-white">
+<section class="card shadow-sm mb-4 analytics-panel is-collapsed" data-analytics-panel>
+    <button type="button" class="card-header bg-accent text-white analytics-panel__toggle w-100 border-0" aria-expanded="false">
         <h2 class="h5 mb-0">Таблица по направлениям</h2>
-    </div>
-    <div class="table-responsive">
+        <span class="analytics-panel__chevron" aria-hidden="true"></span>
+    </button>
+    <div class="analytics-panel__body table-responsive">
         <table class="table table-hover mb-0">
             <thead>
                 <tr>
@@ -248,13 +254,121 @@
             </tbody>
         </table>
     </div>
-</div>
+</section>
+
+<section class="card shadow-sm mb-4 analytics-panel is-collapsed" data-analytics-panel>
+    <button type="button" class="card-header bg-primary-custom text-white analytics-panel__toggle w-100 border-0" aria-expanded="false">
+        <h2 class="h5 mb-0">Пересечение списков поступающих</h2>
+        <span class="analytics-panel__chevron" aria-hidden="true"></span>
+    </button>
+    <div class="analytics-panel__body">
+        <div class="card-body border-bottom">
+            {% if overlap_directions %}
+            <form method="get" class="analytics-overlap-form">
+                <div>
+                    <label for="overlap-direction" class="form-label small text-muted mb-1">Направление</label>
+                    <select id="overlap-direction" name="direction_id" class="form-select">
+                        {% for direction in overlap_directions %}
+                        <option
+                            value="{{ direction.id }}"
+                            {% if overlap_selected_direction and direction.id == overlap_selected_direction.id %}selected{% endif %}
+                        >
+                            {{ direction.university.name }} — {{ direction.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label for="overlap-limit" class="form-label small text-muted mb-1">Записей</label>
+                    <input
+                        id="overlap-limit"
+                        type="number"
+                        name="limit"
+                        class="form-control"
+                        min="1"
+                        max="500"
+                        value="{{ overlap_limit }}"
+                    >
+                </div>
+                <div>
+                    <button type="submit" class="btn btn-accent">Показать</button>
+                </div>
+            </form>
+            {% else %}
+            <p class="text-muted mb-0">
+                Укажите вузы с поданными заявлениями в
+                <a href="{% url 'cabinet' %}">личном кабинете</a>, чтобы выбрать направление.
+            </p>
+            {% endif %}
+        </div>
+        {% if overlap_directions %}
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>ID абитуриента</th>
+                        <th>Другие списки</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in overlap_rows %}
+                    <tr>
+                        <td>{{ row.abiturient_id }}</td>
+                        <td>{{ row.other_applications }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="2" class="text-muted">
+                            Нет загруженных данных по выбранному направлению.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+    </div>
+</section>
 
 {{ chart_data|json_script:"analytics-chart-data" }}
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 <script>
 (() => {
+    const panels = Array.from(document.querySelectorAll("[data-analytics-panel]"));
+
+    function setPanelCollapsed(panel, collapsed) {
+        panel.classList.toggle("is-collapsed", collapsed);
+        const toggle = panel.querySelector(".analytics-panel__toggle");
+        if (toggle) {
+            toggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+        }
+    }
+
+    panels.forEach((panel) => {
+        const toggle = panel.querySelector(".analytics-panel__toggle");
+        if (!toggle) {
+            return;
+        }
+        toggle.addEventListener("click", () => {
+            setPanelCollapsed(panel, !panel.classList.contains("is-collapsed"));
+        });
+    });
+
+    const expandAllButton = document.getElementById("analytics-expand-all");
+    if (expandAllButton) {
+        expandAllButton.addEventListener("click", () => {
+            panels.forEach((panel) => setPanelCollapsed(panel, false));
+        });
+    }
+
+    const collapseAllButton = document.getElementById("analytics-collapse-all");
+    if (collapseAllButton) {
+        collapseAllButton.addEventListener("click", () => {
+            panels.forEach((panel) => setPanelCollapsed(panel, true));
+        });
+    }
+
     const chartDataEl = document.getElementById("analytics-chart-data");
     if (!chartDataEl || typeof Chart === "undefined") {
         return;
@@ -298,10 +412,12 @@
         const colors = [];
         for (const group of groups || []) {
             const count = Number(group.count) || 0;
-            if (count <= 0) continue;
+            if (count <= 0) {
+                continue;
+            }
             labels.push(group.label);
             data.push(count);
-            colors.push(GROUP_COLORS[group.key] || "#94a3b8");
+            colors.push(group.color || GROUP_COLORS[group.key] || "#94a3b8");
         }
         return { labels, data, colors };
     }
