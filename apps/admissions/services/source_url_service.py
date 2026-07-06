@@ -16,6 +16,7 @@ SPBU_LECH_LIST_URL = (
     "&fin_source_name=%D0%91%D1%8E%D0%B4%D0%B6%D0%B5%D1%82"
     "&faculty_name=%D0%A1%D0%9F%D0%B1%D0%93%D0%A3&is_foreign=0"
 )
+ROSUNIMED_LIST_URL = "https://contest.rosunimed.ru/"
 
 
 def get_direction_source_url(direction: StudyDirection) -> str | None:
@@ -46,5 +47,7 @@ def get_direction_source_url(direction: StudyDirection) -> str | None:
         return f"{base_url}{list_path}" if base_url and list_path else MSU_LECH_LIST_URL
     if provider == "spbu":
         return params.get("report_page_url") or api_config.get("referer") or SPBU_LECH_LIST_URL
+    if provider == "rosunimed":
+        return params.get("source_url") or ROSUNIMED_LIST_URL
 
     return None

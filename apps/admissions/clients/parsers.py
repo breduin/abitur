@@ -23,4 +23,7 @@ def parse_applicant_row(row: dict, provider: str) -> ParsedApplicantRow | None:
     if provider == "spbu":
         position = int(row.get("_position", 0))
         return ParsedApplicantRow.from_spbu_row(row, position=position)
+    if provider == "rosunimed":
+        position = int(row.get("_position", 0))
+        return ParsedApplicantRow.from_rosunimed_row(row, position=position)
     return ParsedApplicantRow.from_first_med_row(row)

@@ -59,6 +59,16 @@ def parse_spbu_enrollment_consent(row: dict[str, Any]) -> bool:
     return value in {"да", "✓", "✔", "yes", "true", "1"}
 
 
+def parse_rosunimed_enrollment_consent(row: dict[str, Any]) -> bool:
+    value = row.get("consent")
+    if isinstance(value, bool):
+        return value
+    if value is None or value == "":
+        return False
+    normalized = str(value).strip().lower()
+    return normalized in {"true", "1", "yes", "да"}
+
+
 def parse_first_med_enrollment_consent(row: dict[str, Any]) -> bool:
     value = row.get("ncons4enr")
     if isinstance(value, bool):

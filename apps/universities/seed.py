@@ -14,6 +14,7 @@ SPBU_LECH_LIST_URL = (
     "&fin_source_name=%D0%91%D1%8E%D0%B4%D0%B6%D0%B5%D1%82"
     "&faculty_name=%D0%A1%D0%9F%D0%B1%D0%93%D0%A3&is_foreign=0"
 )
+ROSUNIMED_LIST_URL = "https://contest.rosunimed.ru/"
 
 FIRST_MED_NAME = "Первый мед (СПб)"
 PEDIATRIC_NAME = "Педиатрический (СПб)"
@@ -23,6 +24,7 @@ SECHENOV_NAME = "Сеченовский университет (Мск)"
 PIROGOV_NAME = "Пироговский университет (Мск)"
 MSU_NAME = "МГУ Ломоносова (Мск)"
 SPBU_NAME = "СПбГУ (СПб)"
+ROSUNIMED_NAME = "Росунимед (Мск)"
 
 FIRST_MED_API_CONFIG = {
     "provider": "1spbgmu",
@@ -361,6 +363,32 @@ SPBU_DIRECTIONS = [
 ]
 
 
+ROSUNIMED_API_CONFIG = {
+    "provider": "rosunimed",
+    "base_url": "https://contest.rosunimed.ru",
+    "verify_ssl": False,
+}
+
+ROSUNIMED_DIRECTIONS = [
+    {
+        "name": "Лечебное дело",
+        "seats": 98,
+        "filter_params": {
+            "group_id": "000002336",
+            "source_url": ROSUNIMED_LIST_URL,
+        },
+    },
+    {
+        "name": "Педиатрия",
+        "seats": 4,
+        "filter_params": {
+            "group_id": "000002368",
+            "source_url": ROSUNIMED_LIST_URL,
+        },
+    },
+]
+
+
 def ensure_spbu_seed():
     from apps.universities.models import MedicalUniversity
 
@@ -369,6 +397,18 @@ def ensure_spbu_seed():
         defaults={"api_config": SPBU_API_CONFIG},
     )
     _ensure_university_directions(university, SPBU_API_CONFIG, SPBU_DIRECTIONS, city="spb")
+
+
+def ensure_rosunimed_seed():
+    from apps.universities.models import MedicalUniversity
+
+    university, _ = MedicalUniversity.objects.get_or_create(
+        name=ROSUNIMED_NAME,
+        defaults={"api_config": ROSUNIMED_API_CONFIG},
+    )
+    _ensure_university_directions(
+        university, ROSUNIMED_API_CONFIG, ROSUNIMED_DIRECTIONS, city="msk"
+    )
 
 
 def ensure_seed_data():
@@ -380,3 +420,4 @@ def ensure_seed_data():
     ensure_pirogov_seed()
     ensure_msu_seed()
     ensure_spbu_seed()
+    ensure_rosunimed_seed()

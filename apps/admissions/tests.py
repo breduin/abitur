@@ -9,6 +9,7 @@ from apps.admissions.clients.spbu_html_parser import parse_seats as parse_spbu_s
 from apps.admissions.clients.cpk_msu_client import CPKMSUClient
 from apps.admissions.clients.cpk_msu_html_parser import parse_concourse_section
 from apps.admissions.clients.rsmu_client import RSMUClient
+from apps.admissions.clients.rosunimed_client import RosunimedClient
 from apps.admissions.clients.sechenov_client import SechenovClient
 from apps.admissions.clients.sechenov_html_parser import parse_page_rows
 from apps.admissions.clients.szgmu_client import SZGMUClient
@@ -1067,6 +1068,90 @@ class SPBUClientTests(SimpleTestCase):
         self.assertEqual(rows[0]["Уникальный код поступающего"], "1000001")
         self.assertEqual(rows[1]["Уникальный код поступающего"], "1000002")
         self.assertEqual(client.last_seats, 21)
+
+
+class RosunimedClientTests(SimpleTestCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        import json
+        from pathlib import Path
+
+        cls.sample_response = json.loads(
+            Path(__file__).resolve().parents[2]
+            .joinpath("dev/rosunimed_group_000002336.json")
+            .read_text(encoding="utf-8")
+        )
+
+    def test_from_rosunimed_row_parses_olympiad_and_regular(self):
+        olympiad = self.sample_response["incoming"][0]
+        regular = self.sample_response["incoming"][6]
+        parsed_olympiad = ParsedApplicantRow.from_rosunimed_row(olympiad, position=1)
+        parsed_regular = ParsedApplicantRow.from_rosunimed_row(regular, position=7)
+        self.assertEqual(parsed_olympiad.abiturient_id, "1393536")
+        self.assertEqual(parsed_olympiad.nsummark, 0)
+        self.assertTrue(parsed_olympiad.has_enrollment_consent)
+        self.assertEqual(parsed_olympiad.sstatus_ssp, "На рассмотрении")
+        self.assertEqual(parsed_regular.abiturient_id, "1437739")
+        self.assertEqual(parsed_regular.nsummark, 310)
+        self.assertEqual(parsed_regular.npriority_ssp, 1)
+
+    def test_parse_competition_score_handles_bvi_and_empty(self):
+        olympiad = self.sample_response["incoming"][1]
+        regular = self.sample_response["incoming"][6]
+        empty = self.sample_response["incoming"][3172]
+        self.assertEqual(RosunimedClient._parse_competition_score(olympiad), 0)
+        self.assertEqual(RosunimedClient._parse_competition_score(regular), 310)
+        self.assertIsNone(RosunimedClient._parse_competition_score(empty))
+
+    @patch("apps.admissions.clients.rosunimed_client.RosunimedClient.fetch_group")
+    def test_fetch_skips_bvi_at_threshold_and_stops_on_low_score(self, mock_group):
+        incoming = [
+            {
+                "uniqueId": "1",
+                "ratingTotal": "10",
+                "priority": "1",
+                "reasonWithoutAdmission": "Диплом победителя олимпиады",
+                "consent": True,
+                "status": "На рассмотрении",
+            },
+            {
+                "uniqueId": "2",
+                "ratingTotal": "250",
+                "priority": "1",
+                "consent": False,
+                "status": "На рассмотрении",
+            },
+            {
+                "uniqueId": "3",
+                "ratingTotal": "199",
+                "priority": "1",
+                "consent": False,
+                "status": "На рассмотрении",
+            },
+            {
+                "uniqueId": "4",
+                "ratingTotal": "",
+                "priority": "1",
+                "consent": False,
+                "status": "На рассмотрении",
+            },
+        ]
+        mock_group.return_value = {"count": 98, "incoming": incoming}
+        client = RosunimedClient({"base_url": "https://contest.rosunimed.ru"})
+
+        def fetch_group_side_effect(group_id):
+            client.last_seats = 98
+            return mock_group.return_value
+
+        mock_group.side_effect = fetch_group_side_effect
+        rows = list(
+            client.fetch_all_above_threshold({"group_id": "000002336"}, min_score=200)
+        )
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0]["uniqueId"], "1")
+        self.assertEqual(rows[1]["uniqueId"], "2")
+        self.assertEqual(client.last_seats, 98)
 
 
 class ApplicantOverlapServiceTests(TestCase):
