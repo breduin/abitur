@@ -319,7 +319,7 @@ curl -s "https://szgmu.ru/priem2026/spec/stage1/html/lech_budget.php" \
 
 ### Алгоритм
 
-1. **GET** `applications.php` с `COMPETITIVE_GROUP_ID` и `appPage_{id}=1,2,3...`
+1. **GET** `applications.php` с `COMPETITIVE_GROUP_ID` и `appPage_{id}=page-1,page-2,page-3...`
 2. На странице 5 заявлений; между запросами пауза `page_delay` (0.35 с)
 3. Парсинг HTML-таблицы по `tr[data-app]`
 4. Остановка по порогу `min_fetch_score` или при пустой странице
@@ -346,7 +346,7 @@ curl -s "https://szgmu.ru/priem2026/spec/stage1/html/lech_budget.php" \
 ### Пример curl
 
 ```bash
-curl -k -s "https://priem.sechenov.ru/local/components/firstbit/competition.list/templates/.default/applications.php?COMPETITIVE_GROUP_ID=19488&appPage_19488=1&ADMISSION_LISTS=N&CONTRACT_IS_PAID=N&ORIGINAL_DOCUMENT=N&lang=ru" \
+curl -k -s "https://priem.sechenov.ru/local/components/firstbit/competition.list/templates/.default/applications.php?COMPETITIVE_GROUP_ID=19488&appPage_19488=page-1&ADMISSION_LISTS=N&CONTRACT_IS_PAID=N&ORIGINAL_DOCUMENT=N&lang=ru" \
   -H "Referer: https://priem.sechenov.ru/submitted-applicants/"
 ```
 

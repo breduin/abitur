@@ -535,6 +535,11 @@ class SechenovClientTests(SimpleTestCase):
         self.assertEqual(parsed.npriority_ssp, 1)
         self.assertTrue(parsed.has_enrollment_consent)
 
+    def test_build_params_uses_page_prefix(self):
+        client = SechenovClient({"base_url": "https://priem.sechenov.ru"})
+        params = client._build_params("19488", page=3)
+        self.assertEqual(params["appPage_19488"], "page-3")
+
     @patch("apps.admissions.clients.sechenov_client.SechenovClient.fetch_page_html")
     def test_fetch_paginates_until_threshold(self, mock_html):
         low_score_row = {
@@ -569,6 +574,22 @@ class SechenovClientTests(SimpleTestCase):
         self.assertEqual(len(rows), 5)
         self.assertEqual(rows[-1]["УИД"], "1447524")
         self.assertEqual(client.last_seats, 495)
+
+    @patch("apps.admissions.clients.sechenov_client.SechenovClient.fetch_page_html")
+    def test_fetch_stops_on_duplicate_page(self, mock_html):
+        def fake_page(filter_params, page):
+            return self.sample_html
+
+        mock_html.side_effect = fake_page
+        client = SechenovClient({"base_url": "https://priem.sechenov.ru"})
+        rows = list(
+            client.fetch_all_above_threshold(
+                {"competitive_group_id": "19488"},
+                min_score=200,
+            )
+        )
+        self.assertEqual(len(rows), 5)
+        self.assertEqual(mock_html.call_count, 2)
 
 
 RSMU_ROOT_JSON = [

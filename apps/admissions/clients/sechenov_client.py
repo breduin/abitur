@@ -35,7 +35,7 @@ class SechenovClient(BaseHTTPClient):
         page_key = f"appPage_{competitive_group_id}"
         return {
             "COMPETITIVE_GROUP_ID": competitive_group_id,
-            page_key: str(page),
+            page_key: f"page-{page}",
             "ADMISSION_LISTS": "N",
             "CONTRACT_IS_PAID": "N",
             "ORIGINAL_DOCUMENT": "N",
@@ -81,12 +81,18 @@ class SechenovClient(BaseHTTPClient):
 
         page = 1
         position = 0
+        previous_first_uid: str | None = None
 
         while True:
             html = self.fetch_page_html(filter_params, page=page)
             rows = parse_page_rows(html)
             if not rows:
                 break
+
+            first_uid = rows[0].get("УИД")
+            if page > 1 and first_uid and first_uid == previous_first_uid:
+                break
+            previous_first_uid = first_uid
 
             stop = False
             for row in rows:
