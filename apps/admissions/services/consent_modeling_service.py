@@ -27,9 +27,9 @@ UNIVERSITY_RANK: dict[str, int] = {
     MSU_NAME: 102,
     ROSUNIMED_NAME: 103,
     FIRST_MED_NAME: 200,
-    ALMAZOV_NAME: 201,
+    PEDIATRIC_NAME: 201,
+    ALMAZOV_NAME: 203,
     SZGMU_NAME: 202,
-    PEDIATRIC_NAME: 203,
     SPBU_NAME: 204,
 }
 
@@ -64,6 +64,7 @@ class ConsentProjectionResult:
     is_applied: bool
     status: str
     status_label: str
+    passes_enrollment: bool = False
     consent_university_name: str | None = None
     enrolled_direction_name: str | None = None
 
@@ -373,6 +374,31 @@ def _find_rank(abiturient_id: str, ordered_ids: list[str]) -> int | None:
         return None
 
 
+def _compute_passes_enrollment(
+    direction: StudyDirection,
+    user,
+    user_score: int | None,
+    competitive_ids: list[str],
+    enrollment_position: int | None,
+) -> bool:
+    if enrollment_position is not None:
+        return True
+    if user_score is None or not direction.seats:
+        return False
+
+    position = _find_rank(user.abiturient_id, competitive_ids)
+    if position is None:
+        position = _hypothetical_competitive_position(
+            direction,
+            user,
+            user_score,
+            competitive_ids,
+        )
+    if position is None:
+        return False
+    return position <= direction.seats
+
+
 def get_user_consent_projection(
     user,
     consent_modeling: dict[str, Any] | None,
@@ -458,6 +484,15 @@ def get_user_consent_projection(
             status = "not_in_submission"
             status_label = "Нет в списке поступающих"
 
+        user_score = profile.nsummark if profile else _user_projection_score(user, university)
+        passes_enrollment = _compute_passes_enrollment(
+            direction,
+            user,
+            user_score,
+            competitive_by_direction.get(direction_key, []),
+            enrolled_position,
+        )
+
         results.append(
             ConsentProjectionResult(
                 university_name=university.name,
@@ -474,8 +509,147 @@ def get_user_consent_projection(
                 is_applied=True,
                 status=status,
                 status_label=status_label,
+                passes_enrollment=passes_enrollment,
                 consent_university_name=user_consent_university_name,
                 enrolled_direction_name=enrolled_elsewhere_name,
+            )
+        )
+
+    return results
+
+
+def _user_projection_score(user, university: MedicalUniversity) -> int | None:
+    profiles = list(
+        ApplicantProfile.objects.filter(abiturient_id=user.abiturient_id).only("nsummark")
+    )
+    if profiles:
+        return max(profile.nsummark for profile in profiles)
+    if user.ege_total_score is None:
+        return None
+    bonus = university.honors_diploma_points if user.has_honors_diploma else 0
+    return user.ege_total_score + bonus
+
+
+def _hypothetical_competitive_position(
+    direction: StudyDirection,
+    user,
+    user_score: int,
+    competitive_ids: list[str],
+) -> int | None:
+    if not competitive_ids:
+        return 1
+
+    profiles = {
+        profile.abiturient_id: profile
+        for profile in ApplicantProfile.objects.filter(
+            direction_id=direction.id,
+            abiturient_id__in=competitive_ids,
+        )
+    }
+    entries: list[ApplicationEntry] = []
+    for abiturient_id in competitive_ids:
+        profile = profiles.get(abiturient_id)
+        if profile is None:
+            continue
+        entries.append(
+            ApplicationEntry(
+                abiturient_id=profile.abiturient_id,
+                direction_id=direction.id,
+                university_id=direction.university_id,
+                university_name=direction.university.name,
+                direction_name=direction.name,
+                position=profile.position,
+                nsummark=profile.nsummark,
+                npriority_ssp=profile.npriority_ssp,
+                is_olympiad=_is_olympiad(profile),
+                seats=direction.seats,
+            )
+        )
+
+    hypothetical = ApplicationEntry(
+        abiturient_id=user.abiturient_id,
+        direction_id=direction.id,
+        university_id=direction.university_id,
+        university_name=direction.university.name,
+        direction_name=direction.name,
+        position=10**9,
+        nsummark=user_score,
+        npriority_ssp=1,
+        is_olympiad=user_score == 0,
+        seats=direction.seats,
+    )
+    entries.append(hypothetical)
+    sorted_entries = sorted(entries, key=_competitive_sort_key)
+    for index, entry in enumerate(sorted_entries, start=1):
+        if entry.abiturient_id == user.abiturient_id:
+            return index
+    return None
+
+
+def get_user_hypothetical_consent_projection(
+    user,
+    consent_modeling: dict[str, Any] | None,
+) -> list[ConsentProjectionResult]:
+    if not consent_modeling:
+        return []
+
+    applied_ids = set(user.applied_universities.values_list("id", flat=True))
+    competitive_by_direction = consent_modeling.get("competitive_by_direction") or {}
+    cutoff_by_direction = {
+        item["direction_id"]: item.get("cutoff_score")
+        for item in consent_modeling.get("cutoff_scores") or []
+    }
+
+    directions = list(
+        StudyDirection.objects.filter(university__is_active=True)
+        .select_related("university")
+        .order_by("university__name", "name")
+    )
+
+    results: list[ConsentProjectionResult] = []
+    for direction in directions:
+        university = direction.university
+        if university.id in applied_ids:
+            continue
+
+        user_score = _user_projection_score(user, university)
+        direction_key = str(direction.id)
+        competitive_ids = competitive_by_direction.get(direction_key, [])
+        competitive_position = (
+            _hypothetical_competitive_position(
+                direction,
+                user,
+                user_score,
+                competitive_ids,
+            )
+            if user_score is not None
+            else None
+        )
+        passes_enrollment = _compute_passes_enrollment(
+            direction,
+            user,
+            user_score,
+            competitive_ids,
+            None,
+        )
+
+        results.append(
+            ConsentProjectionResult(
+                university_name=university.name,
+                direction_name=direction.name,
+                direction_id=direction.id,
+                seats=direction.seats,
+                submission_position=None,
+                competitive_position=competitive_position,
+                enrollment_position=None,
+                nsummark=user_score,
+                npriority_ssp=None,
+                cutoff_score=cutoff_by_direction.get(direction.id),
+                is_admitted=False,
+                is_applied=False,
+                status="hypothetical",
+                status_label="Прогноз",
+                passes_enrollment=passes_enrollment,
             )
         )
 

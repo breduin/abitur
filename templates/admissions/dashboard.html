@@ -110,94 +110,20 @@
             Позиция указана для списка на зачисление, конкурсного списка или исходного списка заявлений.
         </p>
     </div>
-    <div class="table-responsive">
-        <table class="table table-hover mb-0">
-            <thead>
-                <tr>
-                    <th>Медицинский университет</th>
-                    <th>Направление</th>
-                    <th>Мест</th>
-                    <th>Приоритет</th>
-                    <th>Баллы</th>
-                    <th>Позиция</th>
-                    <th>Тип позиции</th>
-                    <th>Проходной</th>
-                    <th>Статус</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for row in consent_projection %}
-                <tr>
-                    <td>{{ row.university_name }}</td>
-                    <td>{{ row.direction_name }}</td>
-                    <td>{% if row.seats is not None %}{{ row.seats }}{% else %}—{% endif %}</td>
-                    <td>{% if row.npriority_ssp is not None %}{{ row.npriority_ssp }}{% else %}—{% endif %}</td>
-                    <td>{% if row.nsummark is not None %}{{ row.nsummark }}{% else %}—{% endif %}</td>
-                    <td>{% if row.position %}{{ row.position }}{% else %}—{% endif %}</td>
-                    <td class="text-muted small">{% if row.position_label %}{{ row.position_label }}{% else %}—{% endif %}</td>
-                    <td>{% if row.cutoff_score is not None %}{{ row.cutoff_score }}{% else %}—{% endif %}</td>
-                    <td>
-                        {% if row.status == "admitted" %}
-                            <span class="badge bg-success">{{ row.status_label }}</span>
-                        {% elif row.status == "admitted_other_direction" %}
-                            <span class="badge bg-info text-dark">{{ row.status_label }}</span>
-                        {% elif row.status == "consent_other_university" %}
-                            <span class="badge bg-secondary">{{ row.status_label }}</span>
-                        {% elif row.status == "not_admitted" %}
-                            <span class="badge bg-warning text-dark">{{ row.status_label }}</span>
-                        {% else %}
-                            <span class="badge bg-secondary">{{ row.status_label }}</span>
-                        {% endif %}
-                    </td>
-                </tr>
-                {% empty %}
-                <tr><td colspan="9" class="text-muted">Нет поданных заявлений или данных моделирования.</td></tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
+    {% include "admissions/partials/consent_projection_table.html" with projection_rows=consent_projection empty_message="Нет поданных заявлений или данных моделирования." %}
 </div>
 
-<div class="card shadow-sm">
+<div class="card shadow-sm mb-4">
     <div class="card-header bg-accent text-white">
-        <h2 class="h5 mb-0">Прогноз (среди чужих с приоритетом 1)</h2>
+        <h2 class="h5 mb-0">Прогноз зачисления без поданного заявления</h2>
     </div>
-    <div class="table-responsive">
-        <table class="table table-hover mb-0">
-            <thead>
-                <tr>
-                    <th>Медицинский университет</th>
-                    <th>Направление</th>
-                    <th>Количество мест</th>
-                    <th>Прогнозная позиция</th>
-                    <th class="text-center">Уровень</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for row in forecast_positions %}
-                <tr>
-                    <td>{{ row.university_name }}</td>
-                    <td>{{ row.direction_name }}</td>
-                    <td>{% if row.seats is not None %}{{ row.seats }}{% else %}—{% endif %}</td>
-                    <td>{% if row.position %}{{ row.position }}{% else %}—{% endif %}</td>
-                    <td class="text-center">
-                        {% if row.position and row.seats is not None %}
-                            {% if row.position <= row.seats %}
-                                <span class="level-dot level-dot--good" title="Прогноз в пределах мест"></span>
-                            {% else %}
-                                <span class="level-dot level-dot--warning" title="Прогноз за пределами мест"></span>
-                            {% endif %}
-                        {% else %}
-                            —
-                        {% endif %}
-                    </td>
-                </tr>
-                {% empty %}
-                <tr><td colspan="5" class="text-muted">Нет данных</td></tr>
-                {% endfor %}
-            </tbody>
-        </table>
+    <div class="card-body pb-2">
+        <p class="text-muted small mb-0">
+            Прогноз по моделированию согласий для вузов, куда заявление не подавалось:
+            позиция в конкурсном списке при ваших баллах и статус «Прогноз».
+        </p>
     </div>
+    {% include "admissions/partials/consent_projection_table.html" with projection_rows=hypothetical_consent_projection empty_message="Нет направлений вне поданных заявлений или данных моделирования." %}
 </div>
 
 <p class="text-muted text-end mt-3 mb-0 small">

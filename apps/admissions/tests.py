@@ -36,6 +36,7 @@ from apps.admissions.services.analytics_service import (
 from apps.admissions.services.consent_modeling_service import (
     compute_consent_model,
     get_user_consent_projection,
+    get_user_hypothetical_consent_projection,
 )
 from apps.admissions.services.position_service import PositionService
 from apps.admissions.services.sync_service import (
@@ -337,14 +338,6 @@ class PositionServiceTests(TestCase):
         positions = service.get_current_positions()
         self.assertEqual(positions[0].source_url, "https://example.com/list")
 
-    def test_forecast_among_other_priority_one(self):
-        service = PositionService(self.user)
-        forecast = service.get_forecast_positions()
-        self.assertEqual(len(forecast), 1)
-        # user score 300; other p1: 310, 305 -> position 3
-        self.assertEqual(forecast[0].position, 3)
-        self.assertFalse(forecast[0].is_hypothetical)
-
     def test_applied_without_profile_shows_not_found_when_list_loaded(self):
         user = User.objects.create_user(
             abiturient_id="9999999",
@@ -356,11 +349,9 @@ class PositionServiceTests(TestCase):
 
         service = PositionService(user)
         current = service.get_current_positions()[0]
-        forecast = service.get_forecast_positions()[0]
 
         self.assertTrue(current.is_hypothetical)
         self.assertIn("9999999", current.sstatus_ssp)
-        self.assertTrue(forecast.is_hypothetical)
 
     def test_applied_without_profile_shows_not_synced_when_list_empty(self):
         ApplicantProfile.objects.all().delete()
@@ -377,6 +368,7 @@ class PositionServiceTests(TestCase):
 
         self.assertTrue(current.is_hypothetical)
         self.assertIn("ещё не загружены", current.sstatus_ssp)
+
     def test_profile_status_when_not_applied_but_in_list(self):
         user = User.objects.create_user(
             abiturient_id="2000001",
@@ -1617,7 +1609,7 @@ class ConsentModelingServiceTests(TestCase):
         self.assertIn("A3", model["enrollment_by_direction"][str(pediatric_lech.id)])
         self.assertEqual(model["consent_by_abiturient"]["A3"], pediatric.id)
 
-    def test_almazov_enrollment_over_pediatric_despite_bad_submission_position(self):
+    def test_pediatric_enrollment_over_almazov_with_updated_rank(self):
         almazov = MedicalUniversity.objects.create(name=ALMAZOV_NAME, city=MedicalUniversity.City.SPB)
         pediatric = MedicalUniversity.objects.create(name=PEDIATRIC_NAME, city=MedicalUniversity.City.SPB)
         almazov_ped = StudyDirection.objects.create(
@@ -1645,14 +1637,14 @@ class ConsentModelingServiceTests(TestCase):
         self._create_profile(pediatric_ped, "USERZ", position=9, npriority=1, nsummark=287)
 
         model = compute_consent_model()
-        self.assertIn("USERZ", model["enrollment_by_direction"][str(almazov_ped.id)])
-        self.assertEqual(model["consent_by_abiturient"]["USERZ"], almazov.id)
+        self.assertIn("USERZ", model["enrollment_by_direction"][str(pediatric_ped.id)])
+        self.assertEqual(model["consent_by_abiturient"]["USERZ"], pediatric.id)
 
         user = User.objects.create_user(abiturient_id="USERZ", is_verified=True)
         user.applied_universities.add(almazov, pediatric)
         by_uni = {row.university_name: row for row in get_user_consent_projection(user, model)}
-        self.assertEqual(by_uni[ALMAZOV_NAME].status, "admitted")
-        self.assertEqual(by_uni[PEDIATRIC_NAME].status, "consent_other_university")
+        self.assertEqual(by_uni[PEDIATRIC_NAME].status, "admitted")
+        self.assertEqual(by_uni[ALMAZOV_NAME].status, "consent_other_university")
 
     def test_sechenov_enrollment_excludes_from_lower_universities(self):
         sechenov = MedicalUniversity.objects.create(name=SECHENOV_NAME, city=MedicalUniversity.City.MSK)
@@ -1829,6 +1821,74 @@ class ConsentModelingServiceTests(TestCase):
         self.assertEqual(by_direction["Педиатрия"].status, "admitted")
         self.assertEqual(by_direction["Лечебное дело"].status, "admitted_other_direction")
         self.assertIn("Педиатрия", by_direction["Лечебное дело"].status_label)
+
+    def test_passes_enrollment_true_when_competitive_within_seats_despite_other_consent(self):
+        pediatric = MedicalUniversity.objects.create(name=PEDIATRIC_NAME, city=MedicalUniversity.City.SPB)
+        first_med = MedicalUniversity.objects.create(name=FIRST_MED_NAME, city=MedicalUniversity.City.SPB)
+        pediatric_ped = StudyDirection.objects.create(
+            university=pediatric,
+            name="Педиатрия",
+            filter_params={},
+            seats=10,
+        )
+        first_med_lech = StudyDirection.objects.create(
+            university=first_med,
+            name="Лечебное дело",
+            filter_params={},
+            seats=10,
+        )
+
+        for index in range(1, 6):
+            self._create_profile(
+                first_med_lech,
+                f"FM{index}",
+                position=index,
+                npriority=1,
+                nsummark=295,
+            )
+        self._create_profile(pediatric_ped, "USERX", position=1, npriority=1, nsummark=290)
+        self._create_profile(first_med_lech, "USERX", position=7, npriority=2, nsummark=287)
+
+        user = User.objects.create_user(abiturient_id="USERX", is_verified=True)
+        user.applied_universities.add(pediatric, first_med)
+
+        model = compute_consent_model()
+        by_uni = {row.university_name: row for row in get_user_consent_projection(user, model)}
+
+        self.assertEqual(by_uni[FIRST_MED_NAME].status, "admitted")
+        self.assertEqual(by_uni[PEDIATRIC_NAME].status, "consent_other_university")
+        self.assertTrue(by_uni[PEDIATRIC_NAME].passes_enrollment)
+
+    def test_hypothetical_consent_projection_for_non_applied_universities(self):
+        university = MedicalUniversity.objects.create(name=FIRST_MED_NAME, city=MedicalUniversity.City.SPB)
+        other = MedicalUniversity.objects.create(name=SECHENOV_NAME, city=MedicalUniversity.City.MSK)
+        lech = StudyDirection.objects.create(
+            university=university,
+            name="Лечебное дело",
+            filter_params={},
+            seats=2,
+        )
+        other_lech = StudyDirection.objects.create(
+            university=other,
+            name="Лечебное дело",
+            filter_params={},
+            seats=2,
+        )
+
+        self._create_profile(lech, "USERH", position=1, npriority=1, nsummark=320)
+        self._create_profile(other_lech, "OTHER1", position=1, npriority=1, nsummark=330)
+        self._create_profile(other_lech, "OTHER2", position=2, npriority=1, nsummark=310)
+
+        user = User.objects.create_user(abiturient_id="USERH", is_verified=True)
+        user.applied_universities.add(university)
+
+        model = compute_consent_model()
+        projection = get_user_hypothetical_consent_projection(user, model)
+        self.assertEqual(len(projection), 1)
+        self.assertEqual(projection[0].university_name, SECHENOV_NAME)
+        self.assertEqual(projection[0].status_label, "Прогноз")
+        self.assertEqual(projection[0].competitive_position, 2)
+        self.assertTrue(projection[0].passes_enrollment)
 
     def test_analytics_snapshot_includes_consent_modeling(self):
         university = MedicalUniversity.objects.create(name=FIRST_MED_NAME, city=MedicalUniversity.City.SPB)

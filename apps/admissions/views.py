@@ -16,6 +16,7 @@ from apps.admissions.services.analytics_service import (
 from apps.admissions.services.applicant_overlap_service import build_overlap_context
 from apps.admissions.services.consent_modeling_service import (
     get_user_consent_projection,
+    get_user_hypothetical_consent_projection,
 )
 from apps.admissions.services.position_service import PositionService
 from apps.admissions.services.sync_service import mark_force_sync_started
@@ -66,9 +67,12 @@ def dashboard_view(request):
         "admissions/dashboard.html",
         {
             "current_positions": service.get_current_positions(),
-            "forecast_positions": service.get_forecast_positions(),
             "cutoff_scores": (consent_modeling or {}).get("cutoff_scores") or [],
             "consent_projection": get_user_consent_projection(
+                request.user,
+                consent_modeling,
+            ),
+            "hypothetical_consent_projection": get_user_hypothetical_consent_projection(
                 request.user,
                 consent_modeling,
             ),
