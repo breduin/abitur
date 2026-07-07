@@ -73,7 +73,7 @@ PEDIATRIC_DIRECTIONS = [
     },
     {
         "name": "Педиатрия",
-        "filter_params": {"group_id": "kg_16", "source_url": PEDIATRIC_LIST_URL},
+        "filter_params": {"group_id": "kg_17", "source_url": PEDIATRIC_LIST_URL},
     },
 ]
 

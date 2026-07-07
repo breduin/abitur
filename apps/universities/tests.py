@@ -43,7 +43,7 @@ class SeedTests(TestCase):
             d.filter_params.get("group_id")
             for d in pediatric.directions.all()
         }
-        self.assertEqual(group_ids, {"kg_4", "kg_16"})
+        self.assertEqual(group_ids, {"kg_4", "kg_17"})
 
         almazov = MedicalUniversity.objects.get(name=ALMAZOV_NAME)
         self.assertEqual(almazov.api_config.get("provider"), "almazov")

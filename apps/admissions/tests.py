@@ -477,6 +477,45 @@ class GPMUClientTests(SimpleTestCase):
         self.assertEqual(rows[1]["Уникальный код"], "2")
         self.assertEqual(client.last_seats, 52)
 
+    @patch("apps.admissions.clients.gpmu_client.GPMUClient.fetch_group_page")
+    def test_fetch_skips_olympiad_zeros_at_start(self, mock_page):
+        client = GPMUClient({"base_url": "https://spiski.gpmu.org", "page_size": 100})
+
+        def fake_page(group_id, page=1, page_size=None):
+            client.last_seats = 201
+            if page == 1:
+                return {
+                    "rows": [
+                        {
+                            "Уникальный код": "1300693",
+                            "Сумма конкурсных баллов": "0",
+                            "Основание приема БВИ": "Диплом победителя олимпиады",
+                            "Приоритет": "1",
+                        },
+                        {
+                            "Уникальный код": "1352247",
+                            "Сумма конкурсных баллов": "307",
+                            "Приоритет": "1",
+                        },
+                        {
+                            "Уникальный код": "9999999",
+                            "Сумма конкурсных баллов": "199",
+                            "Приоритет": "1",
+                        },
+                    ],
+                    "seats": {"total": 201},
+                }
+            return {"rows": [], "seats": {"total": 201}}
+
+        mock_page.side_effect = fake_page
+        rows = list(
+            client.fetch_all_above_threshold({"group_id": "kg_17"}, min_score=200)
+        )
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0]["Уникальный код"], "1300693")
+        self.assertEqual(rows[1]["Уникальный код"], "1352247")
+        self.assertEqual(client.last_seats, 201)
+
 
 ALMAZOV_SAMPLE_HTML = """
 <p class='number-places'>Всего мест: 162</p>
