@@ -29,6 +29,22 @@ def parse_gpmu_enrollment_consent(row: dict[str, Any]) -> bool:
     )
 
 
+def is_gpmu_bvi(row: dict[str, Any]) -> bool:
+    return bool(str(row.get("Основание приема БВИ", "")).strip())
+
+
+def parse_gpmu_competition_score(row: dict[str, Any]) -> int | None:
+    if is_gpmu_bvi(row):
+        return 0
+    value = row.get("Сумма конкурсных баллов")
+    if value is None or value == "":
+        return None
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+
+
 def parse_sechenov_enrollment_consent(row: dict[str, Any]) -> bool:
     value = str(row.get("Подано согласие", "")).strip().lower()
     return value in {"да", "✓", "✔", "yes", "true", "1"}

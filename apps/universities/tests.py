@@ -4,6 +4,8 @@ from apps.universities.models import MedicalUniversity, StudyDirection
 from apps.universities.seed import (
     ALMAZOV_NAME,
     FIRST_MED_NAME,
+    GPMU_LECH_GROUP_NAME,
+    GPMU_PED_GROUP_NAME,
     PEDIATRIC_NAME,
     MSU_NAME,
     PIROGOV_NAME,
@@ -39,11 +41,14 @@ class SeedTests(TestCase):
 
         pediatric = MedicalUniversity.objects.get(name=PEDIATRIC_NAME)
         self.assertEqual(pediatric.api_config.get("provider"), "gpmu")
-        group_ids = {
-            d.filter_params.get("group_id")
+        group_names = {
+            d.filter_params.get("group_name")
             for d in pediatric.directions.all()
         }
-        self.assertEqual(group_ids, {"kg_4", "kg_17"})
+        self.assertEqual(
+            group_names,
+            {GPMU_LECH_GROUP_NAME, GPMU_PED_GROUP_NAME},
+        )
 
         almazov = MedicalUniversity.objects.get(name=ALMAZOV_NAME)
         self.assertEqual(almazov.api_config.get("provider"), "almazov")

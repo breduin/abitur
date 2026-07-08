@@ -16,7 +16,11 @@ from apps.admissions.clients.szgmu_client import SZGMUClient
 from apps.admissions.clients.szgmu_html_parser import parse_budget_section
 from apps.admissions.clients.szgmu_html_parser import rows_to_dicts as szgmu_rows_to_dicts
 from apps.admissions.clients.base import RateLimitError, UniversityAPIError
-from apps.admissions.clients.gpmu_client import GPMUClient
+from apps.admissions.clients.gpmu_client import (
+    GPMUClient,
+    GPMU_LECH_GROUP_NAME,
+    GPMU_PED_GROUP_NAME,
+)
 from apps.admissions.clients.parsed import ParsedApplicantRow
 from apps.admissions.clients.university_client import UniversityAPIClient
 from apps.admissions.models import ApplicantProfile, SyncJob
@@ -469,6 +473,46 @@ class GPMUClientTests(SimpleTestCase):
         self.assertEqual(rows[1]["Уникальный код"], "2")
         self.assertEqual(client.last_seats, 52)
 
+    def test_from_gpmu_row_treats_bvi_as_zero_score(self):
+        row = {
+            "Уникальный код": "1439926",
+            "Сумма конкурсных баллов": "2",
+            "Основание приема БВИ": "Диплом победителя олимпиады",
+            "Приоритет": "1",
+        }
+        parsed = ParsedApplicantRow.from_gpmu_row(row, position=1)
+        self.assertEqual(parsed.nsummark, 0)
+
+    def test_fetch_skips_bvi_with_low_score_at_start(self):
+        client = GPMUClient({"base_url": "https://spiski.gpmu.org", "page_size": 100})
+
+        def fake_page(group_id, page=1, page_size=None):
+            client.last_seats = 52
+            return {
+                "rows": [
+                    {
+                        "Уникальный код": "1439926",
+                        "Сумма конкурсных баллов": "2",
+                        "Основание приема БВИ": "Диплом победителя олимпиады",
+                        "Приоритет": "1",
+                    },
+                    {
+                        "Уникальный код": "1352247",
+                        "Сумма конкурсных баллов": "307",
+                        "Приоритет": "1",
+                    },
+                ],
+                "seats": {"total": 52},
+            }
+
+        with patch.object(client, "fetch_group_page", side_effect=fake_page):
+            rows = list(
+                client.fetch_all_above_threshold({"group_id": "kg_4"}, min_score=200)
+            )
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0]["Уникальный код"], "1439926")
+        self.assertEqual(rows[1]["Уникальный код"], "1352247")
+
     @patch("apps.admissions.clients.gpmu_client.GPMUClient.fetch_group_page")
     def test_fetch_skips_olympiad_zeros_at_start(self, mock_page):
         client = GPMUClient({"base_url": "https://spiski.gpmu.org", "page_size": 100})
@@ -501,12 +545,64 @@ class GPMUClientTests(SimpleTestCase):
 
         mock_page.side_effect = fake_page
         rows = list(
-            client.fetch_all_above_threshold({"group_id": "kg_17"}, min_score=200)
+            client.fetch_all_above_threshold({"group_id": "kg_18"}, min_score=200)
         )
         self.assertEqual(len(rows), 2)
         self.assertEqual(rows[0]["Уникальный код"], "1300693")
         self.assertEqual(rows[1]["Уникальный код"], "1352247")
         self.assertEqual(client.last_seats, 201)
+
+    def test_resolve_group_id_from_groups_api(self):
+        import json
+        from pathlib import Path
+
+        sample = json.loads(
+            Path(__file__).resolve().parents[2]
+            .joinpath("dev/gpmu_groups.json")
+            .read_text(encoding="utf-8")
+        )
+        client = GPMUClient({"base_url": "https://spiski.gpmu.org"})
+        with patch.object(client, "fetch_groups", return_value=sample):
+            self.assertEqual(
+                client.resolve_group_id({"group_name": GPMU_LECH_GROUP_NAME}),
+                "kg_4",
+            )
+            self.assertEqual(
+                client.resolve_group_id({"group_name": GPMU_PED_GROUP_NAME}),
+                "kg_18",
+            )
+
+    @patch("apps.admissions.clients.gpmu_client.GPMUClient.fetch_group_page")
+    def test_fetch_resolves_group_name_before_request(self, mock_page):
+        sample_groups = {
+            "groups": [
+                {"id": "kg_4", "name": GPMU_LECH_GROUP_NAME},
+                {"id": "kg_18", "name": GPMU_PED_GROUP_NAME},
+            ]
+        }
+        client = GPMUClient({"base_url": "https://spiski.gpmu.org", "page_size": 100})
+        mock_page.return_value = {
+            "rows": [
+                {
+                    "Уникальный код": "1352247",
+                    "Сумма конкурсных баллов": "307",
+                    "Приоритет": "1",
+                },
+            ],
+            "seats": {"total": 201},
+        }
+
+        with patch.object(client, "fetch_groups", return_value=sample_groups):
+            rows = list(
+                client.fetch_all_above_threshold(
+                    {"group_name": GPMU_PED_GROUP_NAME},
+                    min_score=200,
+                )
+            )
+
+        self.assertEqual(len(rows), 1)
+        mock_page.assert_called()
+        self.assertEqual(mock_page.call_args.args[0], "kg_18")
 
 
 ALMAZOV_SAMPLE_HTML = """

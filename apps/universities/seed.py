@@ -66,14 +66,27 @@ PEDIATRIC_API_CONFIG = {
     "fallback_ip": "89.169.170.237",
 }
 
+GPMU_LECH_GROUP_NAME = (
+    "Лечебное дело (на основные места в рамках контрольных цифр приёма)"
+)
+GPMU_PED_GROUP_NAME = (
+    "Педиатрия (на основные места в рамках контрольных цифр приема)"
+)
+
 PEDIATRIC_DIRECTIONS = [
     {
         "name": "Лечебное дело",
-        "filter_params": {"group_id": "kg_4", "source_url": PEDIATRIC_LIST_URL},
+        "filter_params": {
+            "group_name": GPMU_LECH_GROUP_NAME,
+            "source_url": PEDIATRIC_LIST_URL,
+        },
     },
     {
         "name": "Педиатрия",
-        "filter_params": {"group_id": "kg_17", "source_url": PEDIATRIC_LIST_URL},
+        "filter_params": {
+            "group_name": GPMU_PED_GROUP_NAME,
+            "source_url": PEDIATRIC_LIST_URL,
+        },
     },
 ]
 

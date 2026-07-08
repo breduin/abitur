@@ -8,6 +8,7 @@ from apps.admissions.clients.field_parsers import (
     parse_first_med_enrollment_consent,
     parse_gpmu_competition_status,
     parse_gpmu_enrollment_consent,
+    is_gpmu_bvi,
     parse_priority,
     parse_rsmu_enrollment_consent,
     parse_rosunimed_enrollment_consent,
@@ -33,10 +34,13 @@ class ParsedApplicantRow:
         if not abiturient_id:
             return None
 
-        try:
-            nsummark = int(row.get("Сумма конкурсных баллов") or 0)
-        except (TypeError, ValueError):
-            return None
+        if is_gpmu_bvi(row):
+            nsummark = 0
+        else:
+            try:
+                nsummark = int(row.get("Сумма конкурсных баллов") or 0)
+            except (TypeError, ValueError):
+                return None
 
         return cls(
             abiturient_id=abiturient_id,
