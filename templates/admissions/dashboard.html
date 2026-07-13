@@ -12,11 +12,10 @@
         <h2 class="h5 mb-0">Текущие позиции</h2>
     </div>
     <div class="table-responsive">
-        <table class="table table-hover mb-0">
+        <table class="table table-hover dashboard-table mb-0">
             <thead>
                 <tr>
-                    <th>Медицинский университет</th>
-                    <th>Направление</th>
+                    <th>Медицинский университет / направление</th>
                     <th>Количество мест</th>
                     <th>Подано заявлений</th>
                     <th>Позиция</th>
@@ -27,15 +26,21 @@
                 </tr>
             </thead>
             <tbody>
-                {% for row in current_positions %}
-                <tr>
-                    <td>{{ row.university_name }}</td>
-                    <td>
-                        {% if row.source_url %}
-                        <a href="{{ row.source_url }}" target="_blank" rel="noopener noreferrer">{{ row.direction_name }}</a>
-                        {% else %}
-                        {{ row.direction_name }}
-                        {% endif %}
+                {% regroup current_positions by university_name as university_groups %}
+                {% for university in university_groups %}
+                <tr class="dashboard-university-row">
+                    <td colspan="8"><strong>{{ university.grouper }}:</strong></td>
+                </tr>
+                {% for row in university.list %}
+                <tr class="dashboard-direction-row">
+                    <td class="dashboard-direction-cell">
+                        <em>
+                            {% if row.source_url %}
+                            <a href="{{ row.source_url }}" target="_blank" rel="noopener noreferrer" class="dashboard-direction-link">{{ row.direction_name }}</a>
+                            {% else %}
+                            {{ row.direction_name }}
+                            {% endif %}
+                        </em>
                     </td>
                     <td>{% if row.seats is not None %}{{ row.seats }}{% else %}—{% endif %}</td>
                     <td>{% if row.applications_count is not None %}{{ row.applications_count }}{% else %}—{% endif %}</td>
@@ -51,8 +56,9 @@
                         {% endif %}
                     </td>
                 </tr>
+                {% endfor %}
                 {% empty %}
-                <tr><td colspan="9" class="text-muted">Нет данных</td></tr>
+                <tr><td colspan="8" class="text-muted">Нет данных</td></tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -72,27 +78,31 @@
         </p>
     </div>
     <div class="table-responsive">
-        <table class="table table-hover mb-0">
+        <table class="table table-hover dashboard-table mb-0">
             <thead>
                 <tr>
-                    <th>Медицинский университет</th>
-                    <th>Направление</th>
+                    <th>Медицинский университет / направление</th>
                     <th>Мест</th>
                     <th>Зачислено</th>
                     <th>Проходной балл</th>
                 </tr>
             </thead>
             <tbody>
-                {% for row in cutoff_scores %}
-                <tr>
-                    <td>{{ row.university_name }}</td>
-                    <td>{{ row.direction_name }}</td>
+                {% regroup cutoff_scores by university_name as university_groups %}
+                {% for university in university_groups %}
+                <tr class="dashboard-university-row">
+                    <td colspan="4"><strong>{{ university.grouper }}:</strong></td>
+                </tr>
+                {% for row in university.list %}
+                <tr class="dashboard-direction-row">
+                    <td class="dashboard-direction-cell"><em>{{ row.direction_name }}</em></td>
                     <td>{% if row.seats is not None %}{{ row.seats }}{% else %}—{% endif %}</td>
                     <td>{{ row.enrolled_count }}</td>
                     <td>{% if row.cutoff_score is not None %}{{ row.cutoff_score }}{% else %}—{% endif %}</td>
                 </tr>
+                {% endfor %}
                 {% empty %}
-                <tr><td colspan="5" class="text-muted">Нет данных. Обновите списки поступающих.</td></tr>
+                <tr><td colspan="4" class="text-muted">Нет данных. Обновите списки поступающих.</td></tr>
                 {% endfor %}
             </tbody>
         </table>

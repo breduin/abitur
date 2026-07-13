@@ -1,9 +1,8 @@
 <div class="table-responsive">
-    <table class="table table-hover mb-0">
+    <table class="table table-hover dashboard-table mb-0">
         <thead>
             <tr>
-                <th>Медицинский университет</th>
-                <th>Направление</th>
+                <th>Медицинский университет / направление</th>
                 <th>Мест</th>
                 <th>Приоритет</th>
                 <th>Баллы</th>
@@ -14,10 +13,14 @@
             </tr>
         </thead>
         <tbody>
-            {% for row in projection_rows %}
-            <tr>
-                <td>{{ row.university_name }}</td>
-                <td>{{ row.direction_name }}</td>
+            {% regroup projection_rows by university_name as university_groups %}
+            {% for university in university_groups %}
+            <tr class="dashboard-university-row">
+                <td colspan="8"><strong>{{ university.grouper }}:</strong></td>
+            </tr>
+            {% for row in university.list %}
+            <tr class="dashboard-direction-row">
+                <td class="dashboard-direction-cell"><em>{{ row.direction_name }}</em></td>
                 <td>{% if row.seats is not None %}{{ row.seats }}{% else %}—{% endif %}</td>
                 <td>{% if row.npriority_ssp is not None %}{{ row.npriority_ssp }}{% else %}—{% endif %}</td>
                 <td>{% if row.nsummark is not None %}{{ row.nsummark }}{% else %}—{% endif %}</td>
@@ -32,8 +35,9 @@
                     {% endif %}
                 </td>
             </tr>
+            {% endfor %}
             {% empty %}
-            <tr><td colspan="9" class="text-muted">{{ empty_message }}</td></tr>
+            <tr><td colspan="8" class="text-muted">{{ empty_message }}</td></tr>
             {% endfor %}
         </tbody>
     </table>

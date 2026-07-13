@@ -80,6 +80,27 @@ body {
     background-color: rgba(77, 166, 255, 0.1);
 }
 
+.dashboard-university-row td {
+    border-bottom: none;
+    padding-bottom: 0.35rem;
+}
+
+.dashboard-university-row + .dashboard-direction-row td,
+.dashboard-direction-row + .dashboard-direction-row td {
+    border-top: none;
+}
+
+.dashboard-direction-cell {
+    padding-left: 1.25rem;
+}
+
+.dashboard-direction-link {
+    font-style: italic;
+    color: inherit;
+    text-decoration: underline;
+    text-decoration-color: rgba(15, 45, 77, 0.35);
+}
+
 .level-dot {
     display: inline-block;
     width: 1rem;
