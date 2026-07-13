@@ -1610,7 +1610,12 @@ class AnalyticsServiceTests(TestCase):
         self.assertEqual(response.status_code, 200)
 
 
-@override_settings(SINGLE_UNIVERSITY_CONSENT_PROBABILITY=1.0)
+@override_settings(
+    CONSENT_PROBABILITY_ONE_UNIVERSITY=1.0,
+    CONSENT_PROBABILITY_TWO_UNIVERSITIES=1.0,
+    CONSENT_PROBABILITY_THREE_UNIVERSITIES=1.0,
+    CONSENT_PROBABILITY_FOUR_OR_FIVE_UNIVERSITIES=1.0,
+)
 class ConsentModelingServiceTests(TestCase):
     def _create_profile(self, direction, abiturient_id, *, position, npriority, nsummark, raw_data=None):
         return ApplicantProfile.objects.create(
@@ -2040,63 +2045,12 @@ class ConsentModelingServiceTests(TestCase):
         self.assertEqual(projection[0].position_label, "прогнозный конкурсный")
         self.assertTrue(projection[0].passes_enrollment)
 
-    def test_single_university_filter_counts_multiple_directions_same_mu(self):
+    def test_medical_intent_filter_counts_universities_across_cities(self):
         pediatric = MedicalUniversity.objects.create(name=PEDIATRIC_NAME, city=MedicalUniversity.City.SPB)
-        pediatric_lech = StudyDirection.objects.create(
-            university=pediatric,
-            name="Лечебное дело",
-            filter_params={},
-            seats=10,
-        )
+        sechenov = MedicalUniversity.objects.create(name=SECHENOV_NAME, city=MedicalUniversity.City.MSK)
         pediatric_ped = StudyDirection.objects.create(
             university=pediatric,
             name="Педиатрия",
-            filter_params={},
-            seats=10,
-        )
-
-        self._create_profile(pediatric_lech, "SINGLE1", position=1, npriority=1, nsummark=290)
-        self._create_profile(pediatric_ped, "SINGLE1", position=2, npriority=2, nsummark=290)
-
-        model = compute_consent_model(single_university_consent_probability=1.0)
-        single_filter = model["single_university_filter"]
-
-        self.assertEqual(single_filter["candidate_count"], 1)
-        self.assertEqual(single_filter["committed"]["SINGLE1"], PEDIATRIC_NAME)
-        self.assertEqual(single_filter["excluded_count"], 0)
-
-    def test_single_university_filter_skips_two_tracked_universities(self):
-        pediatric = MedicalUniversity.objects.create(name=PEDIATRIC_NAME, city=MedicalUniversity.City.SPB)
-        first_med = MedicalUniversity.objects.create(name=FIRST_MED_NAME, city=MedicalUniversity.City.SPB)
-        pediatric_lech = StudyDirection.objects.create(
-            university=pediatric,
-            name="Лечебное дело",
-            filter_params={},
-            seats=10,
-        )
-        first_med_lech = StudyDirection.objects.create(
-            university=first_med,
-            name="Лечебное дело",
-            filter_params={},
-            seats=10,
-        )
-
-        self._create_profile(pediatric_lech, "MULTI1", position=1, npriority=1, nsummark=290)
-        self._create_profile(first_med_lech, "MULTI1", position=2, npriority=2, nsummark=290)
-
-        model = compute_consent_model(single_university_consent_probability=1.0)
-        single_filter = model["single_university_filter"]
-
-        self.assertEqual(single_filter["candidate_count"], 0)
-        self.assertEqual(single_filter["committed_count"], 0)
-        self.assertEqual(single_filter["excluded_count"], 0)
-
-    def test_single_university_filter_skips_spb_plus_moscow(self):
-        pediatric = MedicalUniversity.objects.create(name=PEDIATRIC_NAME, city=MedicalUniversity.City.SPB)
-        sechenov = MedicalUniversity.objects.create(name=SECHENOV_NAME, city=MedicalUniversity.City.MSK)
-        pediatric_lech = StudyDirection.objects.create(
-            university=pediatric,
-            name="Лечебное дело",
             filter_params={},
             seats=10,
         )
@@ -2107,15 +2061,17 @@ class ConsentModelingServiceTests(TestCase):
             seats=10,
         )
 
-        self._create_profile(pediatric_lech, "MSK1", position=1, npriority=1, nsummark=290)
-        self._create_profile(sechenov_lech, "MSK1", position=2, npriority=1, nsummark=290)
+        self._create_profile(pediatric_ped, "CITY2", position=1, npriority=1, nsummark=290)
+        self._create_profile(sechenov_lech, "CITY2", position=2, npriority=1, nsummark=290)
 
-        model = compute_consent_model(single_university_consent_probability=1.0)
-        single_filter = model["single_university_filter"]
+        model = compute_consent_model()
+        filter_data = model["medical_intent_filter"]
 
-        self.assertEqual(single_filter["candidate_count"], 0)
+        self.assertEqual(filter_data["candidate_count"], 1)
+        self.assertEqual(filter_data["candidates_by_university_count"], {"2": ["CITY2"]})
 
-    def test_single_university_excluded_with_zero_probability(self):
+    @override_settings(CONSENT_PROBABILITY_ONE_UNIVERSITY=0.0)
+    def test_one_university_is_excluded_when_probability_is_zero(self):
         pediatric = MedicalUniversity.objects.create(name=PEDIATRIC_NAME, city=MedicalUniversity.City.SPB)
         pediatric_lech = StudyDirection.objects.create(
             university=pediatric,
@@ -2123,61 +2079,157 @@ class ConsentModelingServiceTests(TestCase):
             filter_params={},
             seats=1,
         )
+        self._create_profile(pediatric_lech, "ONE0", position=1, npriority=1, nsummark=300)
 
-        self._create_profile(pediatric_lech, "EXCL1", position=1, npriority=1, nsummark=300)
+        model = compute_consent_model()
+        filter_data = model["medical_intent_filter"]
 
-        model = compute_consent_model(single_university_consent_probability=0.0)
-        single_filter = model["single_university_filter"]
-        competitive = model["competitive_by_direction"].get(str(pediatric_lech.id), [])
+        self.assertEqual(filter_data["excluded"], ["ONE0"])
+        self.assertNotIn("ONE0", model["competitive_by_direction"].get(str(pediatric_lech.id), []))
 
-        self.assertEqual(single_filter["candidate_count"], 1)
-        self.assertEqual(single_filter["excluded"], ["EXCL1"])
-        self.assertNotIn("EXCL1", competitive)
-        self.assertNotIn("EXCL1", model["enrollment_by_direction"].get(str(pediatric_lech.id), []))
-
-    def test_single_university_committed_with_full_probability(self):
+    @override_settings(CONSENT_PROBABILITY_TWO_UNIVERSITIES=0.50)
+    def test_two_universities_apply_fifty_percent_probability(self):
         pediatric = MedicalUniversity.objects.create(name=PEDIATRIC_NAME, city=MedicalUniversity.City.SPB)
-        pediatric_lech = StudyDirection.objects.create(
+        sechenov = MedicalUniversity.objects.create(name=SECHENOV_NAME, city=MedicalUniversity.City.MSK)
+        pediatric_ped = StudyDirection.objects.create(
             university=pediatric,
+            name="Педиатрия",
+            filter_params={},
+            seats=10,
+        )
+        sechenov_lech = StudyDirection.objects.create(
+            university=sechenov,
             name="Лечебное дело",
             filter_params={},
-            seats=1,
+            seats=10,
         )
+        self._create_profile(pediatric_ped, "TWO1", position=1, npriority=1, nsummark=290)
+        self._create_profile(sechenov_lech, "TWO1", position=2, npriority=1, nsummark=290)
 
-        self._create_profile(pediatric_lech, "KEEP1", position=1, npriority=1, nsummark=300)
-
-        model = compute_consent_model(single_university_consent_probability=1.0)
-        single_filter = model["single_university_filter"]
-        competitive = model["competitive_by_direction"][str(pediatric_lech.id)]
-
-        self.assertEqual(single_filter["committed"]["KEEP1"], PEDIATRIC_NAME)
-        self.assertIn("KEEP1", competitive)
-        self.assertIn("KEEP1", model["enrollment_by_direction"][str(pediatric_lech.id)])
-
-    def test_single_university_probabilistic_exclusion_uses_rng(self):
-        pediatric = MedicalUniversity.objects.create(name=PEDIATRIC_NAME, city=MedicalUniversity.City.SPB)
-        pediatric_lech = StudyDirection.objects.create(
-            university=pediatric,
-            name="Лечебное дело",
-            filter_params={},
-            seats=1,
-        )
-
-        self._create_profile(pediatric_lech, "RNG1", position=1, npriority=1, nsummark=300)
-
-        class AlwaysExclude:
+        class BelowHalf:
             def random(self):
-                return 1.0
+                return 0.49
 
-        model = compute_consent_model(
-            single_university_consent_probability=0.7,
-            rng=AlwaysExclude(),
+        class AboveHalf:
+            def random(self):
+                return 0.51
+
+        kept_model = compute_consent_model(rng=BelowHalf())
+        excluded_model = compute_consent_model(rng=AboveHalf())
+
+        self.assertIn("TWO1", kept_model["medical_intent_filter"]["committed"])
+        self.assertIn("TWO1", excluded_model["medical_intent_filter"]["excluded"])
+
+    @override_settings(CONSENT_PROBABILITY_THREE_UNIVERSITIES=0.75)
+    def test_three_universities_apply_seventy_five_percent_probability(self):
+        pediatric = MedicalUniversity.objects.create(name=PEDIATRIC_NAME, city=MedicalUniversity.City.SPB)
+        first_med = MedicalUniversity.objects.create(name=FIRST_MED_NAME, city=MedicalUniversity.City.SPB)
+        sechenov = MedicalUniversity.objects.create(name=SECHENOV_NAME, city=MedicalUniversity.City.MSK)
+        pediatric_ped = StudyDirection.objects.create(
+            university=pediatric,
+            name="Педиатрия",
+            filter_params={},
+            seats=10,
         )
-        single_filter = model["single_university_filter"]
+        first_med_lech = StudyDirection.objects.create(
+            university=first_med,
+            name="Лечебное дело",
+            filter_params={},
+            seats=10,
+        )
+        sechenov_lech = StudyDirection.objects.create(
+            university=sechenov,
+            name="Лечебное дело",
+            filter_params={},
+            seats=10,
+        )
+        self._create_profile(pediatric_ped, "THREE1", position=1, npriority=1, nsummark=290)
+        self._create_profile(first_med_lech, "THREE1", position=2, npriority=1, nsummark=290)
+        self._create_profile(sechenov_lech, "THREE1", position=3, npriority=1, nsummark=290)
 
-        self.assertEqual(single_filter["probability"], 0.7)
-        self.assertEqual(single_filter["excluded"], ["RNG1"])
-        self.assertNotIn("RNG1", model["competitive_by_direction"].get(str(pediatric_lech.id), []))
+        class BelowThreshold:
+            def random(self):
+                return 0.74
+
+        class AboveThreshold:
+            def random(self):
+                return 0.76
+
+        kept_model = compute_consent_model(rng=BelowThreshold())
+        excluded_model = compute_consent_model(rng=AboveThreshold())
+
+        self.assertIn("THREE1", kept_model["medical_intent_filter"]["committed"])
+        self.assertIn("THREE1", excluded_model["medical_intent_filter"]["excluded"])
+
+    def test_four_universities_are_always_kept(self):
+        pediatric = MedicalUniversity.objects.create(name=PEDIATRIC_NAME, city=MedicalUniversity.City.SPB)
+        first_med = MedicalUniversity.objects.create(name=FIRST_MED_NAME, city=MedicalUniversity.City.SPB)
+        sechenov = MedicalUniversity.objects.create(name=SECHENOV_NAME, city=MedicalUniversity.City.MSK)
+        pirogov = MedicalUniversity.objects.create(name="Пирогов", city=MedicalUniversity.City.MSK)
+
+        directions = [
+            StudyDirection.objects.create(
+                university=pediatric,
+                name="Педиатрия",
+                filter_params={},
+                seats=10,
+            ),
+            StudyDirection.objects.create(
+                university=first_med,
+                name="Лечебное дело",
+                filter_params={},
+                seats=10,
+            ),
+            StudyDirection.objects.create(
+                university=sechenov,
+                name="Лечебное дело",
+                filter_params={},
+                seats=10,
+            ),
+            StudyDirection.objects.create(
+                university=pirogov,
+                name="Лечебное дело",
+                filter_params={},
+                seats=10,
+            ),
+        ]
+
+        for index, direction in enumerate(directions, start=1):
+            self._create_profile(direction, "FOUR1", position=index, npriority=1, nsummark=290)
+
+        class AlwaysHighRandom:
+            def random(self):
+                return 0.99999
+
+        model = compute_consent_model(rng=AlwaysHighRandom())
+        filter_data = model["medical_intent_filter"]
+
+        self.assertIn("FOUR1", filter_data["committed"])
+        self.assertNotIn("FOUR1", filter_data["excluded"])
+
+    def test_medical_intent_filter_metadata_in_payload(self):
+        pediatric = MedicalUniversity.objects.create(name=PEDIATRIC_NAME, city=MedicalUniversity.City.SPB)
+        pediatric_lech = StudyDirection.objects.create(
+            university=pediatric,
+            name="Лечебное дело",
+            filter_params={},
+            seats=1,
+        )
+        self._create_profile(pediatric_lech, "META1", position=1, npriority=1, nsummark=300)
+
+        model = compute_consent_model()
+        filter_data = model["medical_intent_filter"]
+
+        self.assertEqual(
+            filter_data["probabilities"],
+            {
+                "1": 1.0,
+                "2": 1.0,
+                "3": 1.0,
+                "4_or_5": 1.0,
+            },
+        )
+        self.assertIn("META1", filter_data["committed"])
 
     def test_analytics_snapshot_includes_consent_modeling(self):
         university = MedicalUniversity.objects.create(name=FIRST_MED_NAME, city=MedicalUniversity.City.SPB)
@@ -2192,7 +2244,7 @@ class ConsentModelingServiceTests(TestCase):
         payload = save_analytics_snapshot()
         self.assertIn("consent_modeling", payload)
         self.assertIn("cutoff_scores", payload["consent_modeling"])
-        self.assertIn("single_university_filter", payload["consent_modeling"])
+        self.assertIn("medical_intent_filter", payload["consent_modeling"])
 
 
 class AuthTests(TestCase):
