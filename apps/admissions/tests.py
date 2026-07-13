@@ -50,7 +50,7 @@ from apps.admissions.services.sync_service import (
 )
 from apps.admissions.services.sync_status_service import get_sync_progress_context
 from apps.universities.models import MedicalUniversity, StudyDirection
-from apps.universities.seed import ALMAZOV_NAME, FIRST_MED_NAME, PEDIATRIC_NAME, SECHENOV_NAME
+from apps.universities.seed import ALMAZOV_NAME, FIRST_MED_NAME, PEDIATRIC_NAME, SECHENOV_NAME, SZGMU_NAME
 from apps.users.models import User
 from django.utils import timezone
 from datetime import timedelta
@@ -1741,6 +1741,57 @@ class ConsentModelingServiceTests(TestCase):
         by_uni = {row.university_name: row for row in get_user_consent_projection(user, model)}
         self.assertEqual(by_uni[PEDIATRIC_NAME].status, "admitted")
         self.assertEqual(by_uni[ALMAZOV_NAME].status, "consent_other_university")
+        almazov_row = by_uni[ALMAZOV_NAME]
+        self.assertEqual(almazov_row.submission_position, 35)
+        self.assertLess(almazov_row.competitive_position, almazov_row.seats)
+        self.assertNotEqual(almazov_row.position, almazov_row.submission_position)
+        self.assertTrue(almazov_row.is_hypothetical_competitive)
+        self.assertEqual(almazov_row.position_label, "прогнозный конкурсный")
+        self.assertTrue(almazov_row.passes_enrollment)
+
+    def test_user_projection_shows_hypothetical_competitive_when_locked_out(self):
+        pediatric = MedicalUniversity.objects.create(name=PEDIATRIC_NAME, city=MedicalUniversity.City.SPB)
+        szgmu = MedicalUniversity.objects.create(name=SZGMU_NAME, city=MedicalUniversity.City.SPB)
+        pediatric_ped = StudyDirection.objects.create(
+            university=pediatric,
+            name="Педиатрия",
+            filter_params={},
+            seats=201,
+        )
+        szgmu_lech = StudyDirection.objects.create(
+            university=szgmu,
+            name="Лечебное дело",
+            filter_params={},
+            seats=97,
+        )
+
+        for index in range(1, 98):
+            self._create_profile(
+                szgmu_lech,
+                f"SZ{index}",
+                position=index,
+                npriority=1,
+                nsummark=270,
+            )
+        self._create_profile(pediatric_ped, "USERW", position=9, npriority=1, nsummark=290)
+        self._create_profile(szgmu_lech, "USERW", position=254, npriority=1, nsummark=280)
+
+        user = User.objects.create_user(abiturient_id="USERW", is_verified=True)
+        user.applied_universities.add(pediatric, szgmu)
+
+        model = compute_consent_model()
+        self.assertNotIn("USERW", model["competitive_by_direction"].get(str(szgmu_lech.id), []))
+
+        by_uni = {row.university_name: row for row in get_user_consent_projection(user, model)}
+        szgmu_row = by_uni[SZGMU_NAME]
+
+        self.assertEqual(szgmu_row.status, "consent_other_university")
+        self.assertEqual(szgmu_row.submission_position, 254)
+        self.assertLessEqual(szgmu_row.competitive_position, szgmu_row.seats)
+        self.assertNotEqual(szgmu_row.position, szgmu_row.submission_position)
+        self.assertTrue(szgmu_row.is_hypothetical_competitive)
+        self.assertEqual(szgmu_row.position_label, "прогнозный конкурсный")
+        self.assertTrue(szgmu_row.passes_enrollment)
 
     def test_sechenov_enrollment_excludes_from_lower_universities(self):
         sechenov = MedicalUniversity.objects.create(name=SECHENOV_NAME, city=MedicalUniversity.City.MSK)
@@ -1984,6 +2035,8 @@ class ConsentModelingServiceTests(TestCase):
         self.assertEqual(projection[0].university_name, SECHENOV_NAME)
         self.assertEqual(projection[0].status_label, "Прогноз")
         self.assertEqual(projection[0].competitive_position, 2)
+        self.assertTrue(projection[0].is_hypothetical_competitive)
+        self.assertEqual(projection[0].position_label, "прогнозный конкурсный")
         self.assertTrue(projection[0].passes_enrollment)
 
     def test_analytics_snapshot_includes_consent_modeling(self):

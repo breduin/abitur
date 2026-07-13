@@ -65,6 +65,7 @@ class ConsentProjectionResult:
     status: str
     status_label: str
     passes_enrollment: bool = False
+    is_hypothetical_competitive: bool = False
     consent_university_name: str | None = None
     enrolled_direction_name: str | None = None
 
@@ -81,6 +82,8 @@ class ConsentProjectionResult:
         if self.enrollment_position is not None:
             return "зачисление"
         if self.competitive_position is not None:
+            if self.is_hypothetical_competitive:
+                return "прогнозный конкурсный"
             return "конкурсный"
         if self.submission_position is not None:
             return "поданные заявления"
@@ -374,29 +377,39 @@ def _find_rank(abiturient_id: str, ordered_ids: list[str]) -> int | None:
         return None
 
 
-def _compute_passes_enrollment(
+def _resolve_competitive_position(
     direction: StudyDirection,
     user,
     user_score: int | None,
     competitive_ids: list[str],
+) -> tuple[int | None, bool]:
+    actual_position = _find_rank(user.abiturient_id, competitive_ids)
+    if actual_position is not None:
+        return actual_position, False
+    if user_score is None:
+        return None, False
+
+    hypothetical_position = _hypothetical_competitive_position(
+        direction,
+        user,
+        user_score,
+        competitive_ids,
+    )
+    if hypothetical_position is None:
+        return None, False
+    return hypothetical_position, True
+
+
+def _compute_passes_enrollment(
+    direction: StudyDirection,
     enrollment_position: int | None,
+    competitive_position: int | None,
 ) -> bool:
     if enrollment_position is not None:
         return True
-    if user_score is None or not direction.seats:
+    if competitive_position is None or not direction.seats:
         return False
-
-    position = _find_rank(user.abiturient_id, competitive_ids)
-    if position is None:
-        position = _hypothetical_competitive_position(
-            direction,
-            user,
-            user_score,
-            competitive_ids,
-        )
-    if position is None:
-        return False
-    return position <= direction.seats
+    return competitive_position <= direction.seats
 
 
 def get_user_consent_projection(
@@ -449,17 +462,27 @@ def get_user_consent_projection(
         ).first()
 
         direction_key = str(direction.id)
+        competitive_ids = competitive_by_direction.get(direction_key, [])
         enrolled_position = _find_rank(
             user.abiturient_id,
             enrollment_by_direction.get(direction_key, []),
         )
-        competitive_position = _find_rank(
-            user.abiturient_id,
-            competitive_by_direction.get(direction_key, []),
-        )
         submission_position = profile.position if profile else None
         is_admitted = enrolled_position is not None
         enrolled_elsewhere_name = enrolled_direction_name_by_university.get(university.id)
+
+        user_score = profile.nsummark if profile else _user_projection_score(user, university)
+        competitive_position, is_hypothetical_competitive = _resolve_competitive_position(
+            direction,
+            user,
+            user_score,
+            competitive_ids,
+        )
+        passes_enrollment = _compute_passes_enrollment(
+            direction,
+            enrolled_position,
+            competitive_position,
+        )
 
         if is_admitted:
             status = "admitted"
@@ -484,15 +507,6 @@ def get_user_consent_projection(
             status = "not_in_submission"
             status_label = "Нет в списке поступающих"
 
-        user_score = profile.nsummark if profile else _user_projection_score(user, university)
-        passes_enrollment = _compute_passes_enrollment(
-            direction,
-            user,
-            user_score,
-            competitive_by_direction.get(direction_key, []),
-            enrolled_position,
-        )
-
         results.append(
             ConsentProjectionResult(
                 university_name=university.name,
@@ -510,6 +524,7 @@ def get_user_consent_projection(
                 status=status,
                 status_label=status_label,
                 passes_enrollment=passes_enrollment,
+                is_hypothetical_competitive=is_hypothetical_competitive,
                 consent_university_name=user_consent_university_name,
                 enrolled_direction_name=enrolled_elsewhere_name,
             )
@@ -627,10 +642,8 @@ def get_user_hypothetical_consent_projection(
         )
         passes_enrollment = _compute_passes_enrollment(
             direction,
-            user,
-            user_score,
-            competitive_ids,
             None,
+            competitive_position,
         )
 
         results.append(
@@ -650,6 +663,7 @@ def get_user_hypothetical_consent_projection(
                 status="hypothetical",
                 status_label="Прогноз",
                 passes_enrollment=passes_enrollment,
+                is_hypothetical_competitive=competitive_position is not None,
             )
         )
 
