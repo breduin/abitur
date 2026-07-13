@@ -123,3 +123,12 @@ DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (Windows NT .0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 )
+
+SINGLE_UNIVERSITY_CONSENT_PROBABILITY = env.float(
+    "SINGLE_UNIVERSITY_CONSENT_PROBABILITY",
+    default=0.70,
+)
+if not 0.0 <= SINGLE_UNIVERSITY_CONSENT_PROBABILITY <= 1.0:
+    raise ValueError(
+        "SINGLE_UNIVERSITY_CONSENT_PROBABILITY must be between 0.0 and 1.0 inclusive."
+    )

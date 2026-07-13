@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import random
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any
+
+from django.conf import settings
 
 from apps.admissions.models import ApplicantProfile
 from apps.universities.models import MedicalUniversity, StudyDirection
@@ -32,6 +35,15 @@ UNIVERSITY_RANK: dict[str, int] = {
     SZGMU_NAME: 202,
     SPBU_NAME: 204,
 }
+
+SPB_MODELING_UNIVERSITY_NAMES = frozenset(
+    {
+        FIRST_MED_NAME,
+        PEDIATRIC_NAME,
+        ALMAZOV_NAME,
+        SZGMU_NAME,
+    }
+)
 
 
 @dataclass
@@ -148,6 +160,61 @@ def _load_applications() -> tuple[
         )
 
     return by_abiturient, directions, universities
+
+
+def _find_single_spb_university_candidates(
+    by_abiturient: dict[str, list[ApplicationEntry]],
+) -> dict[str, str]:
+    candidates: dict[str, str] = {}
+    for abiturient_id, applications in by_abiturient.items():
+        university_ids = {entry.university_id for entry in applications}
+        if len(university_ids) != 1:
+            continue
+
+        university_name = applications[0].university_name
+        if university_name not in SPB_MODELING_UNIVERSITY_NAMES:
+            continue
+
+        candidates[abiturient_id] = university_name
+
+    return candidates
+
+
+def _apply_single_university_probabilistic_filter(
+    by_abiturient: dict[str, list[ApplicationEntry]],
+    *,
+    probability: float,
+    rng: random.Random | None = None,
+) -> tuple[dict[str, list[ApplicationEntry]], dict[str, Any]]:
+    random_generator = rng or random.Random()
+    candidates = _find_single_spb_university_candidates(by_abiturient)
+
+    committed: dict[str, str] = {}
+    excluded: list[str] = []
+    for abiturient_id, university_name in candidates.items():
+        if random_generator.random() < probability:
+            committed[abiturient_id] = university_name
+        else:
+            excluded.append(abiturient_id)
+
+    if excluded:
+        filtered_by_abiturient = {
+            abiturient_id: applications
+            for abiturient_id, applications in by_abiturient.items()
+            if abiturient_id not in excluded
+        }
+    else:
+        filtered_by_abiturient = by_abiturient
+
+    metadata = {
+        "probability": probability,
+        "candidate_count": len(candidates),
+        "committed_count": len(committed),
+        "excluded_count": len(excluded),
+        "committed": committed,
+        "excluded": excluded,
+    }
+    return filtered_by_abiturient, metadata
 
 
 def _sorted_universities_by_rank(
@@ -301,8 +368,22 @@ def _serialize_competitive_lists(
     }
 
 
-def compute_consent_model() -> dict[str, Any]:
+def compute_consent_model(
+    *,
+    single_university_consent_probability: float | None = None,
+    rng: random.Random | None = None,
+) -> dict[str, Any]:
     by_abiturient, directions, universities = _load_applications()
+    probability = (
+        single_university_consent_probability
+        if single_university_consent_probability is not None
+        else settings.SINGLE_UNIVERSITY_CONSENT_PROBABILITY
+    )
+    by_abiturient, single_university_filter = _apply_single_university_probabilistic_filter(
+        by_abiturient,
+        probability=probability,
+        rng=rng,
+    )
 
     directions_by_university: dict[int, list[StudyDirection]] = defaultdict(list)
     for direction in directions.values():
@@ -367,6 +448,7 @@ def compute_consent_model() -> dict[str, Any]:
         "cutoff_scores": cutoff_scores,
         "enrollment_by_direction": _serialize_enrollment_lists(enrolled_by_direction),
         "competitive_by_direction": _serialize_competitive_lists(competitive),
+        "single_university_filter": single_university_filter,
     }
 
 
