@@ -28,7 +28,9 @@
                 <td class="text-muted small">{% if row.position_label %}{{ row.position_label }}{% else %}—{% endif %}</td>
                 <td>{% if row.cutoff_score is not None %}{{ row.cutoff_score }}{% else %}—{% endif %}</td>
                 <td>
-                    {% if row.passes_enrollment %}
+                    {% if row.status == "admitted" or row.status == "admitted_other_direction" %}
+                        <span class="badge bg-success">{{ row.status_label }}</span>
+                    {% elif row.status == "consent_other_university" and row.passes_enrollment %}
                         <span class="badge bg-success">{{ row.status_label }}</span>
                     {% else %}
                         <span class="badge bg-warning text-dark">{{ row.status_label }}</span>

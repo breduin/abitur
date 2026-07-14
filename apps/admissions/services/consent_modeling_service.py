@@ -258,6 +258,30 @@ def _active_competitive_list(
     return [entry for entry in entries if entry.abiturient_id not in enrolled_ids]
 
 
+def _find_applicant_entry(
+    abiturient_id: str,
+    entries: list[ApplicationEntry],
+) -> ApplicationEntry | None:
+    for entry in entries:
+        if entry.abiturient_id == abiturient_id:
+            return entry
+    return None
+
+
+def _direction_options_for_applicant(
+    abiturient_id: str,
+    ordered_directions: list[StudyDirection],
+    competitive: dict[int, list[ApplicationEntry]],
+) -> list[tuple[int, int, StudyDirection, ApplicationEntry]]:
+    options: list[tuple[int, int, StudyDirection, ApplicationEntry]] = []
+    for direction in ordered_directions:
+        entry = _find_applicant_entry(abiturient_id, competitive.get(direction.id, []))
+        if entry is not None:
+            options.append((entry.npriority_ssp, entry.position, direction, entry))
+    options.sort()
+    return options
+
+
 def _try_enroll_on_alternate_direction(
     applicant: ApplicationEntry,
     direction_list: list[ApplicationEntry],
@@ -358,26 +382,32 @@ def _enroll_university_directions(
             continue
 
         placed = False
-        for alternate_direction in alternate_directions:
-            if _try_enroll_on_alternate_direction(
-                applicant,
-                alternate_lists[alternate_direction.id],
-                alternate_enrolled[alternate_direction.id],
-                enrolled_ids,
-                seats[alternate_direction.id],
-            ):
-                enrolled_by_direction[alternate_direction.id] = alternate_enrolled[
-                    alternate_direction.id
-                ]
+        for _, _, direction, entry in _direction_options_for_applicant(
+            applicant.abiturient_id,
+            ordered_directions,
+            competitive,
+        ):
+            if direction.id == primary_direction.id:
+                if len(enrolled_by_direction[primary_direction.id]) >= seats[primary_direction.id]:
+                    break
+                enrolled_by_direction[primary_direction.id].append(entry)
+                enrolled_ids.add(entry.abiturient_id)
                 placed = True
                 break
 
-        if (
-            not placed
-            and len(enrolled_by_direction[primary_direction.id]) < seats[primary_direction.id]
-        ):
-            enrolled_by_direction[primary_direction.id].append(applicant)
-            enrolled_ids.add(applicant.abiturient_id)
+            if _try_enroll_on_alternate_direction(
+                entry,
+                alternate_lists[direction.id],
+                alternate_enrolled[direction.id],
+                enrolled_ids,
+                seats[direction.id],
+            ):
+                enrolled_by_direction[direction.id] = alternate_enrolled[direction.id]
+                placed = True
+                break
+
+        if placed:
+            continue
 
     for alternate_direction in alternate_directions:
         enrolled_by_direction[alternate_direction.id] = alternate_enrolled[
@@ -619,7 +649,11 @@ def get_user_consent_projection(
         ):
             status = "admitted_other_direction"
             status_label = f"Зачисление: {enrolled_elsewhere_name}"
-        elif profile and user_consent_university_id is not None and user_consent_university_id != university.id:
+        elif (
+            user_consent_university_id is not None
+            and user_consent_university_id != university.id
+            and (profile or competitive_position is not None)
+        ):
             status = "consent_other_university"
             status_label = f"Согласие в {user_consent_university_name or 'другом вузе'}"
         elif competitive_position is not None:

@@ -50,7 +50,7 @@ from apps.admissions.services.sync_service import (
 )
 from apps.admissions.services.sync_status_service import get_sync_progress_context
 from apps.universities.models import MedicalUniversity, StudyDirection
-from apps.universities.seed import ALMAZOV_NAME, FIRST_MED_NAME, PEDIATRIC_NAME, SECHENOV_NAME, SZGMU_NAME
+from apps.universities.seed import ALMAZOV_NAME, FIRST_MED_NAME, PEDIATRIC_NAME, SECHENOV_NAME, SPBU_NAME, SZGMU_NAME
 from apps.users.models import User
 from django.utils import timezone
 from datetime import timedelta
@@ -1947,6 +1947,61 @@ class ConsentModelingServiceTests(TestCase):
         self.assertEqual(by_uni[FIRST_MED_NAME].competitive_position, 11)
         self.assertFalse(by_uni[FIRST_MED_NAME].is_admitted)
 
+    def test_consent_other_university_without_profile_on_direction(self):
+        first_med = MedicalUniversity.objects.create(name=FIRST_MED_NAME, city=MedicalUniversity.City.SPB)
+        spbu = MedicalUniversity.objects.create(name=SPBU_NAME, city=MedicalUniversity.City.SPB)
+        first_med_lech = StudyDirection.objects.create(
+            university=first_med,
+            name="Лечебное дело",
+            filter_params={},
+            seats=135,
+        )
+        spbu_lech = StudyDirection.objects.create(
+            university=spbu,
+            name="Лечебное дело",
+            filter_params={},
+            seats=21,
+        )
+        spbu_stom = StudyDirection.objects.create(
+            university=spbu,
+            name="Стоматология",
+            filter_params={},
+            seats=13,
+        )
+
+        for index in range(1, 6):
+            self._create_profile(
+                spbu_lech,
+                f"SP{index}",
+                position=index,
+                npriority=1,
+                nsummark=300 - index,
+            )
+        for index in range(1, 6):
+            self._create_profile(
+                spbu_stom,
+                f"ST{index}",
+                position=index,
+                npriority=1,
+                nsummark=300 - index,
+            )
+        self._create_profile(first_med_lech, "USERB", position=1, npriority=1, nsummark=287)
+        self._create_profile(spbu_lech, "USERB", position=6, npriority=2, nsummark=287)
+
+        user = User.objects.create_user(abiturient_id="USERB", is_verified=True)
+        user.applied_universities.add(first_med, spbu)
+
+        model = compute_consent_model()
+        by_key = {
+            (row.university_name, row.direction_name): row
+            for row in get_user_consent_projection(user, model)
+        }
+
+        self.assertEqual(by_key[(SPBU_NAME, "Лечебное дело")].status, "consent_other_university")
+        self.assertEqual(by_key[(SPBU_NAME, "Стоматология")].status, "consent_other_university")
+        self.assertFalse(by_key[(SPBU_NAME, "Стоматология")].is_admitted)
+        self.assertTrue(by_key[(SPBU_NAME, "Стоматология")].passes_enrollment)
+
     def test_user_projection_shows_enrolled_on_other_direction(self):
         pediatric = MedicalUniversity.objects.create(name=PEDIATRIC_NAME, city=MedicalUniversity.City.SPB)
         pediatric_lech = StudyDirection.objects.create(
@@ -2002,6 +2057,73 @@ class ConsentModelingServiceTests(TestCase):
         self.assertEqual(by_direction["Стоматология"].status, "admitted")
         self.assertEqual(by_direction["Лечебное дело"].status, "admitted_other_direction")
         self.assertIn("Стоматология", by_direction["Лечебное дело"].status_label)
+
+    def test_prefers_lech_over_stomatology_when_lech_priority_is_higher(self):
+        first_med = MedicalUniversity.objects.create(name=FIRST_MED_NAME, city=MedicalUniversity.City.SPB)
+        first_med_lech = StudyDirection.objects.create(
+            university=first_med,
+            name="Лечебное дело",
+            filter_params={},
+            seats=135,
+        )
+        first_med_ped = StudyDirection.objects.create(
+            university=first_med,
+            name="Педиатрия",
+            filter_params={},
+            seats=15,
+        )
+        first_med_stom = StudyDirection.objects.create(
+            university=first_med,
+            name="Стоматология",
+            filter_params={},
+            seats=69,
+        )
+
+        for index in range(1, 135):
+            self._create_profile(
+                first_med_lech,
+                f"FM{index}",
+                position=index,
+                npriority=1,
+                nsummark=300 - index,
+            )
+        for index in range(1, 89):
+            self._create_profile(
+                first_med_ped,
+                f"PD{index}",
+                position=index,
+                npriority=1,
+                nsummark=290,
+            )
+        for index in range(1, 40):
+            self._create_profile(
+                first_med_stom,
+                f"ST{index}",
+                position=index,
+                npriority=1,
+                nsummark=300 - index,
+            )
+        self._create_profile(first_med_lech, "USERA", position=135, npriority=2, nsummark=287)
+        self._create_profile(first_med_ped, "USERA", position=89, npriority=1, nsummark=287)
+        self._create_profile(first_med_stom, "USERA", position=40, npriority=3, nsummark=287)
+
+        user = User.objects.create_user(abiturient_id="USERA", is_verified=True)
+        user.applied_universities.add(first_med)
+
+        model = compute_consent_model()
+        by_direction = {row.direction_name: row for row in get_user_consent_projection(user, model)}
+
+        self.assertEqual(by_direction["Лечебное дело"].status, "admitted")
+        self.assertEqual(by_direction["Стоматология"].status, "admitted_other_direction")
+        self.assertIn("Лечебное дело", by_direction["Стоматология"].status_label)
+        self.assertIn(
+            "USERA",
+            model["enrollment_by_direction"][str(first_med_lech.id)],
+        )
+        self.assertNotIn(
+            "USERA",
+            model["enrollment_by_direction"].get(str(first_med_stom.id), []),
+        )
 
     def test_passes_enrollment_true_when_competitive_within_seats_despite_other_consent(self):
         pediatric = MedicalUniversity.objects.create(name=PEDIATRIC_NAME, city=MedicalUniversity.City.SPB)
