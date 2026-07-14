@@ -2,6 +2,7 @@ FIRST_MED_LIST_URL = "https://abit.1spbgmu.ru/hod-priema/spiski-postupayushih/"
 PEDIATRIC_LIST_URL = "https://spiski.gpmu.org/spisok-podavshikh"
 ALMAZOV_LIST_URL = "https://abit.almazovcentre.ru/specialty/spec-course/spec-lists/"
 SZGMU_LECH_LIST_URL = "https://szgmu.ru/priem2026/spec/stage1/html/lech_budget.php"
+SZGMU_STOM_LIST_URL = "https://szgmu.ru/priem2026/spec/stage1/html/stom_budget.php"
 SECHENOV_LIST_URL = "https://priem.sechenov.ru/submitted-applicants/"
 PIROGOV_LIST_URL = "https://submitted.rsmu.ru/"
 MSU_LECH_LIST_URL = "https://cpk.msu.ru/submitted/bachelor/dep_10"
@@ -10,6 +11,15 @@ SPBU_LECH_LIST_URL = (
     "&education_level_sort_order=1"
     "&speciality=31.05.01%7C%D0%9B%D0%B5%D1%87%D0%B5%D0%B1%D0%BD%D0%BE%D0%B5+%D0%B4%D0%B5%D0%BB%D0%BE"
     "&program_name=%D0%9B%D0%B5%D1%87%D0%B5%D0%B1%D0%BD%D0%BE%D0%B5+%D0%B4%D0%B5%D0%BB%D0%BE"
+    "&education_form_name=%D0%BE%D1%87%D0%BD%D0%B0%D1%8F"
+    "&fin_source_name=%D0%91%D1%8E%D0%B4%D0%B6%D0%B5%D1%82"
+    "&faculty_name=%D0%A1%D0%9F%D0%B1%D0%93%D0%A3&is_foreign=0"
+)
+SPBU_STOM_LIST_URL = (
+    "https://enrollelists.spbu.ru/reports/PriemList02.php?mode=list"
+    "&education_level_sort_order=1"
+    "&speciality=31.05.03%7C%D0%A1%D1%82%D0%BE%D0%BC%D0%B0%D1%82%D0%BE%D0%BB%D0%BE%D0%B3%D0%B8%D1%8F"
+    "&program_name=%D0%A1%D1%82%D0%BE%D0%BC%D0%B0%D1%82%D0%BE%D0%BB%D0%BE%D0%B3%D0%B8%D1%8F"
     "&education_form_name=%D0%BE%D1%87%D0%BD%D0%B0%D1%8F"
     "&fin_source_name=%D0%91%D1%8E%D0%B4%D0%B6%D0%B5%D1%82"
     "&faculty_name=%D0%A1%D0%9F%D0%B1%D0%93%D0%A3&is_foreign=0"
@@ -57,6 +67,17 @@ FIRST_MED_DIRECTIONS = [
             "source_url": FIRST_MED_LIST_URL,
         },
     },
+    {
+        "name": "Стоматология",
+        "seats": 69,
+        "filter_params": {
+            "srecruitment": "ВПО-2026",
+            "sfaculty_name": "Стоматологический факультет",
+            "sedprofile_name": "Стоматология",
+            "splacekindname": "Бюджет (Общий конкурс)",
+            "source_url": FIRST_MED_LIST_URL,
+        },
+    },
 ]
 
 PEDIATRIC_API_CONFIG = {
@@ -72,6 +93,9 @@ GPMU_LECH_GROUP_NAME = (
 GPMU_PED_GROUP_NAME = (
     "Педиатрия (на основные места в рамках контрольных цифр приема)"
 )
+GPMU_STOM_GROUP_NAME = (
+    "Стоматология  (на основные места в рамках контрольных цифр приема)"
+)
 
 PEDIATRIC_DIRECTIONS = [
     {
@@ -85,6 +109,13 @@ PEDIATRIC_DIRECTIONS = [
         "name": "Педиатрия",
         "filter_params": {
             "group_name": GPMU_PED_GROUP_NAME,
+            "source_url": PEDIATRIC_LIST_URL,
+        },
+    },
+    {
+        "name": "Стоматология",
+        "filter_params": {
+            "group_name": GPMU_STOM_GROUP_NAME,
             "source_url": PEDIATRIC_LIST_URL,
         },
     },
@@ -196,6 +227,15 @@ SZGMU_DIRECTIONS = [
             "source_url": SZGMU_LECH_LIST_URL,
         },
     },
+    {
+        "name": "Стоматология",
+        "seats": 2,
+        "filter_params": {
+            "list_path": "/priem2026/spec/stage1/html/stom_budget.php",
+            "section_marker": "общий конкурс",
+            "source_url": SZGMU_STOM_LIST_URL,
+        },
+    },
 ]
 
 
@@ -234,6 +274,15 @@ SECHENOV_DIRECTIONS = [
         "filter_params": {
             "competitive_group_id": "19486",
             "seats": 31,
+            "source_url": SECHENOV_LIST_URL,
+        },
+    },
+    {
+        "name": "Стоматология",
+        "seats": 50,
+        "filter_params": {
+            "competitive_group_id": "19481",
+            "seats": 50,
             "source_url": SECHENOV_LIST_URL,
         },
     },
@@ -286,6 +335,15 @@ PIROGOV_DIRECTIONS = [
         "filter_params": {
             "program_title": "Педиатрия Общий конкурс 2026",
             "seats": 283,
+            "source_url": PIROGOV_LIST_URL,
+        },
+    },
+    {
+        "name": "Стоматология",
+        "seats": 7,
+        "filter_params": {
+            "program_title": "Стоматология Общий конкурс 2026",
+            "seats": 7,
             "source_url": PIROGOV_LIST_URL,
         },
     },
@@ -373,6 +431,32 @@ SPBU_DIRECTIONS = [
             "source_url": SPBU_LECH_LIST_URL,
         },
     },
+    {
+        "name": "Стоматология",
+        "seats": 20,
+        "filter_params": {
+            "report_priem_list_02_id": "019f60c3-df86-73f8-a6ef-d7f3570e3f65",
+            "speciality_ids": ["50c6d5bf-78b0-4c6c-825f-d58f9f583c93"],
+            "report_page_url": SPBU_STOM_LIST_URL,
+            "filters": {
+                "education_level_sort_order": "1",
+                "report_upload_id": "",
+                "faculty_name": "СПбГУ",
+                "program_name": "Стоматология",
+                "speciality": "31.05.03|Стоматология",
+                "applicant_code": "",
+                "education_form_name": "очная",
+                "fin_source_name": "Бюджет",
+                "contract_status": "",
+                "consent_status": "",
+                "priority": "",
+                "status": "",
+                "is_foreign": "0",
+            },
+            "seats": 20,
+            "source_url": SPBU_STOM_LIST_URL,
+        },
+    },
 ]
 
 
@@ -396,6 +480,14 @@ ROSUNIMED_DIRECTIONS = [
         "seats": 4,
         "filter_params": {
             "group_id": "000002368",
+            "source_url": ROSUNIMED_LIST_URL,
+        },
+    },
+    {
+        "name": "Стоматология",
+        "seats": 120,
+        "filter_params": {
+            "group_id": "000002374",
             "source_url": ROSUNIMED_LIST_URL,
         },
     },

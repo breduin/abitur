@@ -23,6 +23,13 @@ from apps.universities.seed import (
 
 LECH_DIRECTION_NAME = "Лечебное дело"
 PED_DIRECTION_NAME = "Педиатрия"
+STOM_DIRECTION_NAME = "Стоматология"
+
+DIRECTION_ENROLLMENT_ORDER = (
+    LECH_DIRECTION_NAME,
+    PED_DIRECTION_NAME,
+    STOM_DIRECTION_NAME,
+)
 
 UNIVERSITY_RANK: dict[str, int] = {
     SECHENOV_NAME: 100,
@@ -251,6 +258,42 @@ def _active_competitive_list(
     return [entry for entry in entries if entry.abiturient_id not in enrolled_ids]
 
 
+def _try_enroll_on_alternate_direction(
+    applicant: ApplicationEntry,
+    direction_list: list[ApplicationEntry],
+    enrolled_direction: list[ApplicationEntry],
+    enrolled_ids: set[str],
+    seats: int,
+) -> bool:
+    active_list = _active_competitive_list(direction_list, enrolled_ids)
+    applicant_rank = None
+    for index, entry in enumerate(active_list, start=1):
+        if entry.abiturient_id == applicant.abiturient_id:
+            applicant_rank = index
+            break
+
+    if applicant_rank is None:
+        return False
+
+    temp_enrolled = list(enrolled_direction)
+    temp_enrolled_ids = set(enrolled_ids)
+
+    for entry in active_list:
+        if len(temp_enrolled) >= seats:
+            break
+        if entry.abiturient_id == applicant.abiturient_id:
+            temp_enrolled.append(entry)
+            temp_enrolled_ids.add(entry.abiturient_id)
+            enrolled_direction[:] = temp_enrolled
+            enrolled_ids.update(temp_enrolled_ids)
+            return True
+        if entry.abiturient_id not in temp_enrolled_ids:
+            temp_enrolled.append(entry)
+            temp_enrolled_ids.add(entry.abiturient_id)
+
+    return False
+
+
 def _try_enroll_on_pediatrics(
     applicant: ApplicationEntry,
     ped_list: list[ApplicationEntry],
@@ -258,94 +301,111 @@ def _try_enroll_on_pediatrics(
     enrolled_ids: set[str],
     seats_ped: int,
 ) -> bool:
-    active_ped = _active_competitive_list(ped_list, enrolled_ids)
-    ped_rank = None
-    for index, entry in enumerate(active_ped, start=1):
-        if entry.abiturient_id == applicant.abiturient_id:
-            ped_rank = index
-            break
+    return _try_enroll_on_alternate_direction(
+        applicant,
+        ped_list,
+        enrolled_ped,
+        enrolled_ids,
+        seats_ped,
+    )
 
-    if ped_rank is None:
-        return False
 
-    temp_enrolled_ped = list(enrolled_ped)
-    temp_enrolled_ids = set(enrolled_ids)
-
-    for entry in active_ped:
-        if len(temp_enrolled_ped) >= seats_ped:
-            break
-        if entry.abiturient_id == applicant.abiturient_id:
-            temp_enrolled_ped.append(entry)
-            temp_enrolled_ids.add(entry.abiturient_id)
-            enrolled_ped[:] = temp_enrolled_ped
-            enrolled_ids.update(temp_enrolled_ids)
-            return True
-        if entry.abiturient_id not in temp_enrolled_ids:
-            temp_enrolled_ped.append(entry)
-            temp_enrolled_ids.add(entry.abiturient_id)
-
-    return False
+def _ordered_university_directions(
+    university_directions: list[StudyDirection],
+) -> list[StudyDirection]:
+    by_name = {direction.name: direction for direction in university_directions}
+    return [
+        by_name[direction_name]
+        for direction_name in DIRECTION_ENROLLMENT_ORDER
+        if direction_name in by_name
+    ]
 
 
 def _enroll_university_directions(
-    lech_direction: StudyDirection | None,
-    ped_direction: StudyDirection | None,
+    university_directions: list[StudyDirection],
     competitive: dict[int, list[ApplicationEntry]],
 ) -> dict[int, list[ApplicationEntry]]:
     enrolled_by_direction: dict[int, list[ApplicationEntry]] = defaultdict(list)
+    ordered_directions = _ordered_university_directions(university_directions)
+    if not ordered_directions:
+        return enrolled_by_direction
 
-    if lech_direction and ped_direction:
-        lech_list = competitive.get(lech_direction.id, [])
-        ped_list = competitive.get(ped_direction.id, [])
-        seats_lech = lech_direction.seats or 0
-        seats_ped = ped_direction.seats or 0
-        enrolled_lech: list[ApplicationEntry] = []
-        enrolled_ped: list[ApplicationEntry] = []
-        enrolled_ids: set[str] = set()
+    if len(ordered_directions) == 1:
+        direction = ordered_directions[0]
+        seats = direction.seats or 0
+        enrolled_by_direction[direction.id] = competitive.get(direction.id, [])[:seats]
+        return enrolled_by_direction
 
-        for applicant in lech_list:
-            if len(enrolled_lech) >= seats_lech:
-                break
-            if applicant.abiturient_id in enrolled_ids:
-                continue
+    seats = {direction.id: direction.seats or 0 for direction in ordered_directions}
+    enrolled_ids: set[str] = set()
+    primary_direction = ordered_directions[0]
+    alternate_directions = ordered_directions[1:]
+    alternate_lists = {
+        direction.id: competitive.get(direction.id, []) for direction in alternate_directions
+    }
+    alternate_enrolled = {direction.id: [] for direction in alternate_directions}
 
-            if applicant.npriority_ssp == 1:
-                enrolled_lech.append(applicant)
-                enrolled_ids.add(applicant.abiturient_id)
-                continue
+    primary_list = competitive.get(primary_direction.id, [])
+    for applicant in primary_list:
+        if len(enrolled_by_direction[primary_direction.id]) >= seats[primary_direction.id]:
+            break
+        if applicant.abiturient_id in enrolled_ids:
+            continue
 
-            enrolled_on_ped = _try_enroll_on_pediatrics(
+        if applicant.npriority_ssp == 1:
+            enrolled_by_direction[primary_direction.id].append(applicant)
+            enrolled_ids.add(applicant.abiturient_id)
+            continue
+
+        placed = False
+        for alternate_direction in alternate_directions:
+            if _try_enroll_on_alternate_direction(
                 applicant,
-                ped_list,
-                enrolled_ped,
+                alternate_lists[alternate_direction.id],
+                alternate_enrolled[alternate_direction.id],
                 enrolled_ids,
-                seats_ped,
-            )
-            if not enrolled_on_ped and len(enrolled_lech) < seats_lech:
-                enrolled_lech.append(applicant)
-                enrolled_ids.add(applicant.abiturient_id)
+                seats[alternate_direction.id],
+            ):
+                enrolled_by_direction[alternate_direction.id] = alternate_enrolled[
+                    alternate_direction.id
+                ]
+                placed = True
+                break
 
-        for applicant in ped_list:
-            if len(enrolled_ped) >= seats_ped:
+        if (
+            not placed
+            and len(enrolled_by_direction[primary_direction.id]) < seats[primary_direction.id]
+        ):
+            enrolled_by_direction[primary_direction.id].append(applicant)
+            enrolled_ids.add(applicant.abiturient_id)
+
+    for alternate_direction in alternate_directions:
+        enrolled_by_direction[alternate_direction.id] = alternate_enrolled[
+            alternate_direction.id
+        ]
+
+    for rank_index, alternate_direction in enumerate(alternate_directions, start=2):
+        direction_list = competitive.get(alternate_direction.id, [])
+        for applicant in direction_list:
+            if len(enrolled_by_direction[alternate_direction.id]) >= seats[alternate_direction.id]:
                 break
             if applicant.abiturient_id in enrolled_ids:
                 continue
-            if applicant.npriority_ssp == 2:
-                enrolled_ped.append(applicant)
+            if applicant.npriority_ssp == rank_index:
+                enrolled_by_direction[alternate_direction.id].append(applicant)
                 enrolled_ids.add(applicant.abiturient_id)
 
-        enrolled_by_direction[lech_direction.id] = enrolled_lech
-        enrolled_by_direction[ped_direction.id] = enrolled_ped
-        return enrolled_by_direction
+    for alternate_direction in alternate_directions:
+        direction_list = competitive.get(alternate_direction.id, [])
+        for applicant in direction_list:
+            if len(enrolled_by_direction[alternate_direction.id]) >= seats[alternate_direction.id]:
+                break
+            if applicant.abiturient_id in enrolled_ids:
+                continue
+            if applicant.npriority_ssp == 1:
+                enrolled_by_direction[alternate_direction.id].append(applicant)
+                enrolled_ids.add(applicant.abiturient_id)
 
-    single_direction = lech_direction or ped_direction
-    if not single_direction:
-        return enrolled_by_direction
-
-    entries = competitive.get(single_direction.id, [])
-    seats = single_direction.seats or 0
-    enrolled = entries[:seats]
-    enrolled_by_direction[single_direction.id] = enrolled
     return enrolled_by_direction
 
 
@@ -395,17 +455,8 @@ def compute_consent_model(
         competitive.update(university_competitive)
 
         university_directions = directions_by_university[university.id]
-        lech_direction = next(
-            (direction for direction in university_directions if direction.name == LECH_DIRECTION_NAME),
-            None,
-        )
-        ped_direction = next(
-            (direction for direction in university_directions if direction.name == PED_DIRECTION_NAME),
-            None,
-        )
         university_enrollment = _enroll_university_directions(
-            lech_direction,
-            ped_direction,
+            university_directions,
             university_competitive,
         )
 

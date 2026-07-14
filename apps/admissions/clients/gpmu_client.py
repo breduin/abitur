@@ -8,6 +8,9 @@ from apps.admissions.clients.base import BaseHTTPClient, UniversityAPIError
 
 GPMU_LECH_GROUP_NAME = "Лечебное дело (на основные места в рамках контрольных цифр приёма)"
 GPMU_PED_GROUP_NAME = "Педиатрия (на основные места в рамках контрольных цифр приема)"
+GPMU_STOM_GROUP_NAME = (
+    "Стоматология  (на основные места в рамках контрольных цифр приема)"
+)
 
 
 class GPMUClient(BaseHTTPClient):

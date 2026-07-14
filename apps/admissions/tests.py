@@ -1975,6 +1975,34 @@ class ConsentModelingServiceTests(TestCase):
         self.assertEqual(by_direction["Лечебное дело"].status, "admitted_other_direction")
         self.assertIn("Педиатрия", by_direction["Лечебное дело"].status_label)
 
+    def test_user_projection_shows_enrolled_on_stomatology_from_lech_list(self):
+        pediatric = MedicalUniversity.objects.create(name=PEDIATRIC_NAME, city=MedicalUniversity.City.SPB)
+        pediatric_lech = StudyDirection.objects.create(
+            university=pediatric,
+            name="Лечебное дело",
+            filter_params={},
+            seats=52,
+        )
+        pediatric_stom = StudyDirection.objects.create(
+            university=pediatric,
+            name="Стоматология",
+            filter_params={},
+            seats=8,
+        )
+
+        self._create_profile(pediatric_lech, "USERZ", position=14, npriority=2, nsummark=290)
+        self._create_profile(pediatric_stom, "USERZ", position=3, npriority=1, nsummark=290)
+
+        user = User.objects.create_user(abiturient_id="USERZ", is_verified=True)
+        user.applied_universities.add(pediatric)
+
+        model = compute_consent_model()
+        by_direction = {row.direction_name: row for row in get_user_consent_projection(user, model)}
+
+        self.assertEqual(by_direction["Стоматология"].status, "admitted")
+        self.assertEqual(by_direction["Лечебное дело"].status, "admitted_other_direction")
+        self.assertIn("Стоматология", by_direction["Лечебное дело"].status_label)
+
     def test_passes_enrollment_true_when_competitive_within_seats_despite_other_consent(self):
         pediatric = MedicalUniversity.objects.create(name=PEDIATRIC_NAME, city=MedicalUniversity.City.SPB)
         first_med = MedicalUniversity.objects.create(name=FIRST_MED_NAME, city=MedicalUniversity.City.SPB)

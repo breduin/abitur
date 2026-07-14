@@ -6,6 +6,7 @@ from apps.universities.seed import (
     FIRST_MED_NAME,
     GPMU_LECH_GROUP_NAME,
     GPMU_PED_GROUP_NAME,
+    GPMU_STOM_GROUP_NAME,
     PEDIATRIC_NAME,
     MSU_NAME,
     PIROGOV_NAME,
@@ -31,13 +32,14 @@ class SeedTests(TestCase):
         self.assertEqual(MedicalUniversity.objects.filter(name=MSU_NAME).count(), 1)
         self.assertEqual(MedicalUniversity.objects.filter(name=SPBU_NAME).count(), 1)
         self.assertEqual(MedicalUniversity.objects.filter(name=ROSUNIMED_NAME).count(), 1)
-        self.assertEqual(StudyDirection.objects.count(), 15)
+        self.assertEqual(StudyDirection.objects.count(), 22)
 
         first_med = MedicalUniversity.objects.get(name=FIRST_MED_NAME)
         self.assertEqual(first_med.api_config.get("provider"), "1spbgmu")
         seats_by_name = {d.name: d.seats for d in first_med.directions.all()}
         self.assertEqual(seats_by_name["Лечебное дело"], 135)
         self.assertEqual(seats_by_name["Педиатрия"], 15)
+        self.assertEqual(seats_by_name["Стоматология"], 69)
 
         pediatric = MedicalUniversity.objects.get(name=PEDIATRIC_NAME)
         self.assertEqual(pediatric.api_config.get("provider"), "gpmu")
@@ -47,7 +49,7 @@ class SeedTests(TestCase):
         }
         self.assertEqual(
             group_names,
-            {GPMU_LECH_GROUP_NAME, GPMU_PED_GROUP_NAME},
+            {GPMU_LECH_GROUP_NAME, GPMU_PED_GROUP_NAME, GPMU_STOM_GROUP_NAME},
         )
 
         almazov = MedicalUniversity.objects.get(name=ALMAZOV_NAME)
@@ -69,16 +71,23 @@ class SeedTests(TestCase):
             lech.filter_params.get("list_path"),
             "/priem2026/spec/stage1/html/lech_budget.php",
         )
+        stom = szgmu.directions.get(name="Стоматология")
+        self.assertEqual(stom.seats, 2)
+        self.assertEqual(
+            stom.filter_params.get("list_path"),
+            "/priem2026/spec/stage1/html/stom_budget.php",
+        )
 
         sechenov = MedicalUniversity.objects.get(name=SECHENOV_NAME)
         self.assertEqual(sechenov.api_config.get("provider"), "sechenov")
         sechenov_groups = {
             d.filter_params.get("competitive_group_id") for d in sechenov.directions.all()
         }
-        self.assertEqual(sechenov_groups, {"19488", "19486"})
+        self.assertEqual(sechenov_groups, {"19488", "19486", "19481"})
         sechenov_seats = {d.name: d.seats for d in sechenov.directions.all()}
         self.assertEqual(sechenov_seats["Лечебное дело"], 495)
         self.assertEqual(sechenov_seats["Педиатрия"], 31)
+        self.assertEqual(sechenov_seats["Стоматология"], 50)
 
         pirogov = MedicalUniversity.objects.get(name=PIROGOV_NAME)
         self.assertEqual(pirogov.api_config.get("provider"), "rsmu")
@@ -87,9 +96,11 @@ class SeedTests(TestCase):
         }
         self.assertIn("Лечебное дело (Лечебное дело) Общий конкурс 2026", pirogov_titles)
         self.assertIn("Педиатрия Общий конкурс 2026", pirogov_titles)
+        self.assertIn("Стоматология Общий конкурс 2026", pirogov_titles)
         pirogov_seats = {d.name: d.seats for d in pirogov.directions.all()}
         self.assertEqual(pirogov_seats["Лечебное дело"], 426)
         self.assertEqual(pirogov_seats["Педиатрия"], 283)
+        self.assertEqual(pirogov_seats["Стоматология"], 7)
 
         msu = MedicalUniversity.objects.get(name=MSU_NAME)
         self.assertEqual(msu.api_config.get("provider"), "cpk_msu")
@@ -112,6 +123,13 @@ class SeedTests(TestCase):
         self.assertEqual(lech.filter_params.get("filters", {}).get("program_name"), "Лечебное дело")
         self.assertIn("report_priem_list_02_id", lech.filter_params)
         self.assertIn("speciality_ids", lech.filter_params)
+        stom = spbu.directions.get(name="Стоматология")
+        self.assertEqual(stom.seats, 20)
+        self.assertEqual(stom.filter_params.get("filters", {}).get("program_name"), "Стоматология")
+        self.assertEqual(
+            stom.filter_params.get("speciality_ids"),
+            ["50c6d5bf-78b0-4c6c-825f-d58f9f583c93"],
+        )
 
         rosunimed = MedicalUniversity.objects.get(name=ROSUNIMED_NAME)
         self.assertEqual(rosunimed.api_config.get("provider"), "rosunimed")
@@ -119,7 +137,8 @@ class SeedTests(TestCase):
         rosunimed_groups = {
             d.filter_params.get("group_id") for d in rosunimed.directions.all()
         }
-        self.assertEqual(rosunimed_groups, {"000002336", "000002368"})
+        self.assertEqual(rosunimed_groups, {"000002336", "000002368", "000002374"})
         rosunimed_seats = {d.name: d.seats for d in rosunimed.directions.all()}
         self.assertEqual(rosunimed_seats["Лечебное дело"], 98)
         self.assertEqual(rosunimed_seats["Педиатрия"], 4)
+        self.assertEqual(rosunimed_seats["Стоматология"], 120)
