@@ -229,7 +229,7 @@ SZGMU_DIRECTIONS = [
     },
     {
         "name": "Стоматология",
-        "seats": 2,
+        "seats": 0,
         "filter_params": {
             "list_path": "/priem2026/spec/stage1/html/stom_budget.php",
             "section_marker": "общий конкурс",
@@ -433,7 +433,7 @@ SPBU_DIRECTIONS = [
     },
     {
         "name": "Стоматология",
-        "seats": 20,
+        "seats": 13,
         "filter_params": {
             "report_priem_list_02_id": "019f60c3-df86-73f8-a6ef-d7f3570e3f65",
             "speciality_ids": ["50c6d5bf-78b0-4c6c-825f-d58f9f583c93"],
@@ -453,7 +453,7 @@ SPBU_DIRECTIONS = [
                 "status": "",
                 "is_foreign": "0",
             },
-            "seats": 20,
+            "seats": 13,
             "source_url": SPBU_STOM_LIST_URL,
         },
     },

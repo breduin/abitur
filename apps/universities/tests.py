@@ -72,7 +72,7 @@ class SeedTests(TestCase):
             "/priem2026/spec/stage1/html/lech_budget.php",
         )
         stom = szgmu.directions.get(name="Стоматология")
-        self.assertEqual(stom.seats, 2)
+        self.assertEqual(stom.seats, 0)
         self.assertEqual(
             stom.filter_params.get("list_path"),
             "/priem2026/spec/stage1/html/stom_budget.php",
@@ -124,7 +124,7 @@ class SeedTests(TestCase):
         self.assertIn("report_priem_list_02_id", lech.filter_params)
         self.assertIn("speciality_ids", lech.filter_params)
         stom = spbu.directions.get(name="Стоматология")
-        self.assertEqual(stom.seats, 20)
+        self.assertEqual(stom.seats, 13)
         self.assertEqual(stom.filter_params.get("filters", {}).get("program_name"), "Стоматология")
         self.assertEqual(
             stom.filter_params.get("speciality_ids"),
