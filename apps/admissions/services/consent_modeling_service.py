@@ -592,6 +592,78 @@ def _find_rank(abiturient_id: str, ordered_ids: list[str]) -> int | None:
         return None
 
 
+def _application_entry_from_profile(
+    profile: ApplicantProfile,
+    direction: StudyDirection,
+    university: MedicalUniversity,
+) -> ApplicationEntry:
+    return ApplicationEntry(
+        abiturient_id=profile.abiturient_id,
+        direction_id=direction.id,
+        university_id=university.id,
+        university_name=university.name,
+        direction_name=direction.name,
+        position=profile.position,
+        nsummark=profile.nsummark,
+        npriority_ssp=profile.npriority_ssp,
+        is_olympiad=_is_olympiad(profile),
+        seats=direction.seats,
+    )
+
+
+def _build_competitive_entries(
+    direction: StudyDirection,
+    university: MedicalUniversity,
+    competitive_ids: list[str],
+) -> list[ApplicationEntry]:
+    profiles = {
+        profile.abiturient_id: profile
+        for profile in ApplicantProfile.objects.filter(
+            direction_id=direction.id,
+            abiturient_id__in=competitive_ids,
+        )
+    }
+    entries: list[ApplicationEntry] = []
+    for abiturient_id in competitive_ids:
+        profile = profiles.get(abiturient_id)
+        if profile is None:
+            continue
+        entries.append(_application_entry_from_profile(profile, direction, university))
+    return entries
+
+
+def _enrolled_abiturient_ids_at_university(
+    university_id: int,
+    directions_by_university: dict[int, list[StudyDirection]],
+    enrollment_by_direction: dict[str, list[str]],
+) -> set[str]:
+    enrolled_ids: set[str] = set()
+    for uni_direction in directions_by_university.get(university_id, []):
+        for abiturient_id in enrollment_by_direction.get(str(uni_direction.id), []):
+            enrolled_ids.add(abiturient_id)
+    return enrolled_ids
+
+
+def _resolve_counterfactual_competitive_position(
+    user_abiturient_id: str,
+    user_entry: ApplicationEntry,
+    direction_list: list[ApplicationEntry],
+    counterfactual_enrolled_ids: set[str],
+    seats: int,
+) -> tuple[int | None, bool]:
+    passes = _would_pass_on_direction(
+        user_entry,
+        direction_list,
+        counterfactual_enrolled_ids,
+        seats,
+    )
+    active_list = _active_competitive_list(direction_list, counterfactual_enrolled_ids)
+    for index, row in enumerate(active_list, start=1):
+        if row.abiturient_id == user_abiturient_id:
+            return index, passes
+    return None, False
+
+
 def _resolve_competitive_position(
     direction: StudyDirection,
     user,
@@ -687,26 +759,48 @@ def get_user_consent_projection(
         enrolled_elsewhere_name = enrolled_direction_name_by_university.get(university.id)
 
         user_score = profile.nsummark if profile else _user_projection_score(user, university)
-        competitive_position, is_hypothetical_competitive = _resolve_competitive_position(
-            direction,
-            user,
-            user_score,
-            competitive_ids,
+        is_admitted_other_direction = (
+            not is_admitted
+            and enrolled_elsewhere_name is not None
+            and enrolled_elsewhere_name != direction.name
+            and university.id == user_consent_university_id
         )
-        passes_enrollment = _compute_passes_enrollment(
-            direction,
-            enrolled_position,
-            competitive_position,
-        )
+
+        if is_admitted_other_direction and profile is not None:
+            direction_list = _build_competitive_entries(direction, university, competitive_ids)
+            counterfactual_enrolled_ids = _enrolled_abiturient_ids_at_university(
+                university.id,
+                directions_by_university,
+                enrollment_by_direction,
+            )
+            counterfactual_enrolled_ids.discard(user.abiturient_id)
+            user_entry = _application_entry_from_profile(profile, direction, university)
+            seats = direction.seats or 0
+            competitive_position, passes_enrollment = _resolve_counterfactual_competitive_position(
+                user.abiturient_id,
+                user_entry,
+                direction_list,
+                counterfactual_enrolled_ids,
+                seats,
+            )
+            is_hypothetical_competitive = True
+        else:
+            competitive_position, is_hypothetical_competitive = _resolve_competitive_position(
+                direction,
+                user,
+                user_score,
+                competitive_ids,
+            )
+            passes_enrollment = _compute_passes_enrollment(
+                direction,
+                enrolled_position,
+                competitive_position,
+            )
 
         if is_admitted:
             status = "admitted"
             status_label = "Проходит"
-        elif (
-            enrolled_elsewhere_name
-            and enrolled_elsewhere_name != direction.name
-            and university.id == user_consent_university_id
-        ):
+        elif is_admitted_other_direction:
             status = "admitted_other_direction"
             status_label = f"Зачисление: {enrolled_elsewhere_name}"
         elif (
