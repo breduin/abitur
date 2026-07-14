@@ -282,6 +282,70 @@ def _direction_options_for_applicant(
     return options
 
 
+def _would_pass_on_direction(
+    entry: ApplicationEntry,
+    direction_list: list[ApplicationEntry],
+    enrolled_ids: set[str],
+    seats: int,
+) -> bool:
+    active_list = _active_competitive_list(direction_list, enrolled_ids)
+    for index, row in enumerate(active_list, start=1):
+        if row.abiturient_id == entry.abiturient_id:
+            return index <= seats
+    return False
+
+
+def _pick_best_passing_direction(
+    abiturient_id: str,
+    ordered_directions: list[StudyDirection],
+    competitive: dict[int, list[ApplicationEntry]],
+    enrolled_ids: set[str],
+    seats: dict[int, int],
+) -> tuple[StudyDirection, ApplicationEntry] | None:
+    best: tuple[int, int, StudyDirection, ApplicationEntry] | None = None
+    for npriority, position, direction, entry in _direction_options_for_applicant(
+        abiturient_id,
+        ordered_directions,
+        competitive,
+    ):
+        direction_list = competitive.get(direction.id, [])
+        if not _would_pass_on_direction(
+            entry,
+            direction_list,
+            enrolled_ids,
+            seats[direction.id],
+        ):
+            continue
+        if best is None or (npriority, position) < (best[0], best[1]):
+            best = (npriority, position, direction, entry)
+
+    if best is None:
+        return None
+    return best[2], best[3]
+
+
+def _commit_enrollment_on_direction(
+    entry: ApplicationEntry,
+    direction: StudyDirection,
+    competitive: dict[int, list[ApplicationEntry]],
+    enrolled_by_direction: dict[int, list[ApplicationEntry]],
+    enrolled_ids: set[str],
+    seats: dict[int, int],
+) -> bool:
+    direction_list = competitive.get(direction.id, [])
+    enrolled_list = enrolled_by_direction[direction.id]
+    if _try_enroll_on_alternate_direction(
+        entry,
+        direction_list,
+        enrolled_list,
+        enrolled_ids,
+        seats[direction.id],
+    ):
+        enrolled_by_direction[direction.id] = enrolled_list
+        return True
+    return False
+
+
 def _try_enroll_on_alternate_direction(
     applicant: ApplicationEntry,
     direction_list: list[ApplicationEntry],
@@ -363,78 +427,74 @@ def _enroll_university_directions(
     seats = {direction.id: direction.seats or 0 for direction in ordered_directions}
     enrolled_ids: set[str] = set()
     primary_direction = ordered_directions[0]
-    alternate_directions = ordered_directions[1:]
-    alternate_lists = {
-        direction.id: competitive.get(direction.id, []) for direction in alternate_directions
-    }
-    alternate_enrolled = {direction.id: [] for direction in alternate_directions}
-
     primary_list = competitive.get(primary_direction.id, [])
+
     for applicant in primary_list:
-        if len(enrolled_by_direction[primary_direction.id]) >= seats[primary_direction.id]:
-            break
         if applicant.abiturient_id in enrolled_ids:
             continue
 
         if applicant.npriority_ssp == 1:
-            enrolled_by_direction[primary_direction.id].append(applicant)
-            enrolled_ids.add(applicant.abiturient_id)
+            if _would_pass_on_direction(
+                applicant,
+                primary_list,
+                enrolled_ids,
+                seats[primary_direction.id],
+            ):
+                _commit_enrollment_on_direction(
+                    applicant,
+                    primary_direction,
+                    competitive,
+                    enrolled_by_direction,
+                    enrolled_ids,
+                    seats,
+                )
             continue
 
-        placed = False
-        for _, _, direction, entry in _direction_options_for_applicant(
+        picked = _pick_best_passing_direction(
             applicant.abiturient_id,
             ordered_directions,
             competitive,
-        ):
-            if direction.id == primary_direction.id:
-                if len(enrolled_by_direction[primary_direction.id]) >= seats[primary_direction.id]:
-                    break
-                enrolled_by_direction[primary_direction.id].append(entry)
-                enrolled_ids.add(entry.abiturient_id)
-                placed = True
-                break
-
-            if _try_enroll_on_alternate_direction(
-                entry,
-                alternate_lists[direction.id],
-                alternate_enrolled[direction.id],
-                enrolled_ids,
-                seats[direction.id],
-            ):
-                enrolled_by_direction[direction.id] = alternate_enrolled[direction.id]
-                placed = True
-                break
-
-        if placed:
+            enrolled_ids,
+            seats,
+        )
+        if picked is None:
             continue
+        direction, entry = picked
+        _commit_enrollment_on_direction(
+            entry,
+            direction,
+            competitive,
+            enrolled_by_direction,
+            enrolled_ids,
+            seats,
+        )
 
-    for alternate_direction in alternate_directions:
-        enrolled_by_direction[alternate_direction.id] = alternate_enrolled[
-            alternate_direction.id
-        ]
-
-    for rank_index, alternate_direction in enumerate(alternate_directions, start=2):
+    for alternate_direction in ordered_directions[1:]:
         direction_list = competitive.get(alternate_direction.id, [])
-        for applicant in direction_list:
-            if len(enrolled_by_direction[alternate_direction.id]) >= seats[alternate_direction.id]:
-                break
-            if applicant.abiturient_id in enrolled_ids:
+        for entry in direction_list:
+            if entry.abiturient_id in enrolled_ids:
                 continue
-            if applicant.npriority_ssp == rank_index:
-                enrolled_by_direction[alternate_direction.id].append(applicant)
-                enrolled_ids.add(applicant.abiturient_id)
+            if _find_applicant_entry(entry.abiturient_id, primary_list) is not None:
+                continue
 
-    for alternate_direction in alternate_directions:
-        direction_list = competitive.get(alternate_direction.id, [])
-        for applicant in direction_list:
-            if len(enrolled_by_direction[alternate_direction.id]) >= seats[alternate_direction.id]:
-                break
-            if applicant.abiturient_id in enrolled_ids:
+            picked = _pick_best_passing_direction(
+                entry.abiturient_id,
+                ordered_directions,
+                competitive,
+                enrolled_ids,
+                seats,
+            )
+            if picked is None:
                 continue
-            if applicant.npriority_ssp == 1:
-                enrolled_by_direction[alternate_direction.id].append(applicant)
-                enrolled_ids.add(applicant.abiturient_id)
+            direction, best_entry = picked
+            _commit_enrollment_on_direction(
+                best_entry,
+                direction,
+                competitive,
+                enrolled_by_direction,
+                enrolled_ids,
+                seats,
+            )
 
     return enrolled_by_direction
 
