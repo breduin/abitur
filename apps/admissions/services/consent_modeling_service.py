@@ -632,13 +632,17 @@ def _build_competitive_entries(
     return entries
 
 
-def _enrolled_abiturient_ids_at_university(
+def _counterfactual_enrolled_ids_for_direction(
     university_id: int,
+    direction_id: int,
     directions_by_university: dict[int, list[StudyDirection]],
     enrollment_by_direction: dict[str, list[str]],
 ) -> set[str]:
+    """Зачисленные на другие направления этого МУ — не конкурируют за места direction_id."""
     enrolled_ids: set[str] = set()
     for uni_direction in directions_by_university.get(university_id, []):
+        if uni_direction.id == direction_id:
+            continue
         for abiturient_id in enrollment_by_direction.get(str(uni_direction.id), []):
             enrolled_ids.add(abiturient_id)
     return enrolled_ids
@@ -768,8 +772,9 @@ def get_user_consent_projection(
 
         if is_admitted_other_direction and profile is not None:
             direction_list = _build_competitive_entries(direction, university, competitive_ids)
-            counterfactual_enrolled_ids = _enrolled_abiturient_ids_at_university(
+            counterfactual_enrolled_ids = _counterfactual_enrolled_ids_for_direction(
                 university.id,
+                direction.id,
                 directions_by_university,
                 enrollment_by_direction,
             )

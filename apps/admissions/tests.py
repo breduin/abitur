@@ -2089,6 +2089,71 @@ class ConsentModelingServiceTests(TestCase):
         self.assertIsNotNone(lech_row.cutoff_score)
         self.assertGreaterEqual(lech_row.nsummark, lech_row.cutoff_score)
 
+    def test_admitted_other_direction_positions_not_all_first(self):
+        first_med = MedicalUniversity.objects.create(name=FIRST_MED_NAME, city=MedicalUniversity.City.SPB)
+        first_med_lech = StudyDirection.objects.create(
+            university=first_med,
+            name="Лечебное дело",
+            filter_params={},
+            seats=135,
+        )
+        first_med_ped = StudyDirection.objects.create(
+            university=first_med,
+            name="Педиатрия",
+            filter_params={},
+            seats=15,
+        )
+        first_med_stom = StudyDirection.objects.create(
+            university=first_med,
+            name="Стоматология",
+            filter_params={},
+            seats=69,
+        )
+
+        for index in range(1, 135):
+            self._create_profile(
+                first_med_lech,
+                f"FM{index}",
+                position=index,
+                npriority=1,
+                nsummark=300 - index,
+            )
+        for index in range(1, 15):
+            self._create_profile(
+                first_med_ped,
+                f"PD{index}",
+                position=index,
+                npriority=1,
+                nsummark=290,
+            )
+        for index in range(1, 69):
+            self._create_profile(
+                first_med_stom,
+                f"ST{index}",
+                position=index,
+                npriority=1,
+                nsummark=300 - index,
+            )
+        self._create_profile(first_med_lech, "USERE", position=135, npriority=2, nsummark=287)
+        self._create_profile(first_med_ped, "USERE", position=8, npriority=1, nsummark=287)
+        self._create_profile(first_med_stom, "USERE", position=40, npriority=3, nsummark=287)
+
+        user = User.objects.create_user(abiturient_id="USERE", is_verified=True)
+        user.applied_universities.add(first_med)
+
+        model = compute_consent_model()
+        by_direction = {row.direction_name: row for row in get_user_consent_projection(user, model)}
+
+        self.assertEqual(by_direction["Педиатрия"].status, "admitted")
+        lech_row = by_direction["Лечебное дело"]
+        stom_row = by_direction["Стоматология"]
+        self.assertEqual(lech_row.status, "admitted_other_direction")
+        self.assertEqual(stom_row.status, "admitted_other_direction")
+        self.assertNotEqual(lech_row.position, 1)
+        self.assertNotEqual(stom_row.position, 1)
+        self.assertTrue(lech_row.passes_enrollment)
+        self.assertTrue(stom_row.passes_enrollment)
+
     def test_user_projection_shows_enrolled_on_stomatology_from_lech_list(self):
         pediatric = MedicalUniversity.objects.create(name=PEDIATRIC_NAME, city=MedicalUniversity.City.SPB)
         pediatric_lech = StudyDirection.objects.create(
