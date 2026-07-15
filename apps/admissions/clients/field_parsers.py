@@ -45,6 +45,11 @@ def parse_gpmu_competition_score(row: dict[str, Any]) -> int | None:
         return None
 
 
+def is_sechenov_bvi(row: dict[str, Any]) -> bool:
+    basis = str(row.get("Основание приема без ВИ", "")).strip()
+    return basis not in {"", "—", "-"}
+
+
 def parse_sechenov_enrollment_consent(row: dict[str, Any]) -> bool:
     value = str(row.get("Подано согласие", "")).strip().lower()
     return value in {"да", "✓", "✔", "yes", "true", "1"}

@@ -9,6 +9,7 @@ from apps.admissions.clients.field_parsers import (
     parse_gpmu_competition_status,
     parse_gpmu_enrollment_consent,
     is_gpmu_bvi,
+    is_sechenov_bvi,
     parse_priority,
     parse_rsmu_enrollment_consent,
     parse_rosunimed_enrollment_consent,
@@ -58,12 +59,18 @@ class ParsedApplicantRow:
         if not abiturient_id:
             return None
 
-        try:
-            nsummark = int(row.get("Сумма конкурсных баллов") or 0)
-        except (TypeError, ValueError):
-            return None
+        if is_sechenov_bvi(row):
+            nsummark = 0
+        else:
+            try:
+                nsummark = int(row.get("Сумма конкурсных баллов") or 0)
+            except (TypeError, ValueError):
+                return None
 
         status = str(row.get("Статус", "")).strip() or "На рассмотрении"
+        raw_data = dict(row)
+        if is_sechenov_bvi(row):
+            raw_data["_is_bvi"] = True
 
         return cls(
             abiturient_id=abiturient_id,
@@ -72,7 +79,7 @@ class ParsedApplicantRow:
             nsummark=nsummark,
             npriority_ssp=parse_priority(row.get("Приоритет зачисления")),
             has_enrollment_consent=parse_sechenov_enrollment_consent(row),
-            raw_data=row,
+            raw_data=raw_data,
         )
 
     @classmethod

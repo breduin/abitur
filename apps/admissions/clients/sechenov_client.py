@@ -3,6 +3,7 @@ from collections.abc import Iterator
 from typing import Any
 
 from apps.admissions.clients.base import BaseHTTPClient, UniversityAPIError
+from apps.admissions.clients.field_parsers import is_sechenov_bvi
 from apps.admissions.clients.sechenov_html_parser import parse_page_rows, sleep_between_pages
 
 
@@ -94,17 +95,24 @@ class SechenovClient(BaseHTTPClient):
                 break
             previous_first_uid = first_uid
 
-            stop = False
+            stop_after_page = False
             for row in rows:
+                if is_sechenov_bvi(row):
+                    position += 1
+                    row["_position"] = position
+                    yield row
+                    continue
+
                 score = self._parse_score(row.get("Сумма конкурсных баллов"))
                 if self._should_stop_at_score(score, min_score):
-                    stop = True
-                    break
+                    stop_after_page = True
+                    continue
+
                 position += 1
                 row["_position"] = position
                 yield row
 
-            if stop:
+            if stop_after_page:
                 break
 
             page += 1

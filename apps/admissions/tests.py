@@ -763,6 +763,12 @@ class SechenovClientTests(SimpleTestCase):
         cls.sample_html = Path(__file__).resolve().parents[2].joinpath(
             "dev/sechenov_response.html"
         ).read_text(encoding="utf-8")
+        cls.stom_page_html = Path(__file__).resolve().parents[2].joinpath(
+            "dev/sechenov_stom_p1.html"
+        ).read_text(encoding="utf-8")
+        cls.stom_page2_html = Path(__file__).resolve().parents[2].joinpath(
+            "dev/sechenov_stom_p2.html"
+        ).read_text(encoding="utf-8")
 
     def test_parse_page_rows(self):
         rows = parse_page_rows(self.sample_html)
@@ -778,6 +784,19 @@ class SechenovClientTests(SimpleTestCase):
         self.assertEqual(parsed.nsummark, 310)
         self.assertEqual(parsed.npriority_ssp, 1)
         self.assertTrue(parsed.has_enrollment_consent)
+
+    def test_from_sechenov_row_treats_bvi_as_olympiad(self):
+        row = {
+            "УИД": "1237576",
+            "Основание приема без ВИ": "Закл.этап ВСОШ призер",
+            "Сумма конкурсных баллов": "5",
+            "Статус": "Участвует в конкурсе",
+            "Приоритет зачисления": "1",
+            "Подано согласие": "Да",
+        }
+        parsed = ParsedApplicantRow.from_sechenov_row(row, position=2)
+        self.assertEqual(parsed.nsummark, 0)
+        self.assertTrue(parsed.raw_data.get("_is_bvi"))
 
     def test_build_params_uses_page_prefix(self):
         client = SechenovClient({"base_url": "https://priem.sechenov.ru"})
@@ -834,6 +853,29 @@ class SechenovClientTests(SimpleTestCase):
         )
         self.assertEqual(len(rows), 5)
         self.assertEqual(mock_html.call_count, 2)
+
+    @patch("apps.admissions.clients.sechenov_client.SechenovClient.fetch_page_html")
+    def test_fetch_continues_past_bvi_rows_on_same_page(self, mock_html):
+        def fake_page(filter_params, page):
+            if page == 1:
+                return self.stom_page_html
+            if page == 2:
+                return self.stom_page2_html
+            return ""
+
+        mock_html.side_effect = fake_page
+        client = SechenovClient({"base_url": "https://priem.sechenov.ru", "page_delay": 0})
+        rows = list(
+            client.fetch_all_above_threshold(
+                {"competitive_group_id": "19481", "seats": 50},
+                min_score=200,
+            )
+        )
+        self.assertEqual(len(rows), 10)
+        self.assertEqual(rows[0]["УИД"], "1250266")
+        self.assertEqual(rows[3]["УИД"], "1571296")
+        self.assertEqual(rows[-1]["УИД"], "1508409")
+        self.assertGreaterEqual(mock_html.call_count, 2)
 
 
 RSMU_ROOT_JSON = [
