@@ -159,6 +159,35 @@ def _load_applications() -> tuple[
     return by_abiturient, directions, universities
 
 
+def _load_real_consent_universities(
+    universities: dict[int, MedicalUniversity],
+) -> dict[str, int]:
+    """abiturient_id → university_id по факту поданного согласия.
+
+    Если согласие отмечено в нескольких МУ — берём вуз с лучшим UNIVERSITY_RANK.
+    """
+    consent_candidates: dict[str, set[int]] = defaultdict(set)
+    for abiturient_id, university_id in ApplicantProfile.objects.filter(
+        has_enrollment_consent=True,
+        direction__university__is_active=True,
+    ).values_list("abiturient_id", "direction__university_id"):
+        consent_candidates[abiturient_id].add(university_id)
+
+    result: dict[str, int] = {}
+    for abiturient_id, university_ids in consent_candidates.items():
+        if len(university_ids) == 1:
+            result[abiturient_id] = next(iter(university_ids))
+            continue
+        result[abiturient_id] = min(
+            university_ids,
+            key=lambda uid: (
+                _university_rank(universities[uid].name),
+                universities[uid].name,
+            ),
+        )
+    return result
+
+
 def _consent_probability_by_university_count(university_count: int) -> float:
     if university_count <= 1:
         return settings.CONSENT_PROBABILITY_ONE_UNIVERSITY
@@ -172,9 +201,11 @@ def _consent_probability_by_university_count(university_count: int) -> float:
 def _apply_medical_intent_probabilistic_filter(
     by_abiturient: dict[str, list[ApplicationEntry]],
     *,
+    real_consent_abiturient_ids: set[str] | None = None,
     rng: random.Random | None = None,
 ) -> tuple[dict[str, list[ApplicationEntry]], dict[str, Any]]:
     random_generator = rng or random.Random()
+    real_consent_ids = real_consent_abiturient_ids or set()
     candidates_by_count: dict[int, list[str]] = defaultdict(list)
     committed: list[str] = []
     excluded: list[str] = []
@@ -183,6 +214,9 @@ def _apply_medical_intent_probabilistic_filter(
         probability = _consent_probability_by_university_count(university_count)
         candidates_by_count[university_count].append(abiturient_id)
 
+        if abiturient_id in real_consent_ids:
+            committed.append(abiturient_id)
+            continue
         if probability >= 1.0:
             committed.append(abiturient_id)
             continue
@@ -236,10 +270,18 @@ def _build_university_competitive(
     university_id: int,
     by_abiturient: dict[str, list[ApplicationEntry]],
     locked_abiturient_ids: set[str],
+    real_consent_university: dict[str, int] | None = None,
 ) -> dict[int, list[ApplicationEntry]]:
+    consent_by_abiturient = real_consent_university or {}
     competitive: dict[int, list[ApplicationEntry]] = defaultdict(list)
     for abiturient_id, applications in by_abiturient.items():
         if abiturient_id in locked_abiturient_ids:
+            continue
+        consent_university_id = consent_by_abiturient.get(abiturient_id)
+        if (
+            consent_university_id is not None
+            and consent_university_id != university_id
+        ):
             continue
         for entry in applications:
             if entry.university_id == university_id:
@@ -522,8 +564,10 @@ def compute_consent_model(
     rng: random.Random | None = None,
 ) -> dict[str, Any]:
     by_abiturient, directions, universities = _load_applications()
+    real_consent_university = _load_real_consent_universities(universities)
     by_abiturient, medical_intent_filter = _apply_medical_intent_probabilistic_filter(
         by_abiturient,
+        real_consent_abiturient_ids=set(real_consent_university),
         rng=rng,
     )
 
@@ -541,6 +585,7 @@ def compute_consent_model(
             university.id,
             by_abiturient,
             locked_abiturient_ids,
+            real_consent_university=real_consent_university,
         )
         competitive.update(university_competitive)
 

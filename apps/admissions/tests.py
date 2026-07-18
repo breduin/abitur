@@ -1,5 +1,6 @@
 from django.test import SimpleTestCase, TestCase, override_settings
 from unittest.mock import MagicMock, patch
+import random
 
 from apps.admissions.clients.almazov_client import AlmazovClient
 from apps.admissions.clients.almazov_html_parser import parse_seats, parse_table, rows_to_dicts
@@ -262,14 +263,14 @@ class SourceUrlServiceTests(TestCase):
             name="Лечебное дело",
             filter_params={
                 "group_id": "kg_4",
-                "source_url": "https://spiski.gpmu.org/spisok-podavshikh",
+                "source_url": "https://spiski.gpmu.org/konkursnye-spiski",
             },
         )
         from apps.admissions.services.source_url_service import get_direction_source_url
 
         self.assertEqual(
             get_direction_source_url(direction),
-            "https://spiski.gpmu.org/spisok-podavshikh",
+            "https://spiski.gpmu.org/konkursnye-spiski",
         )
 
 
@@ -545,7 +546,7 @@ class GPMUClientTests(SimpleTestCase):
 
         mock_page.side_effect = fake_page
         rows = list(
-            client.fetch_all_above_threshold({"group_id": "kg_18"}, min_score=200)
+            client.fetch_all_above_threshold({"group_id": "kg_20"}, min_score=200)
         )
         self.assertEqual(len(rows), 2)
         self.assertEqual(rows[0]["Уникальный код"], "1300693")
@@ -569,7 +570,7 @@ class GPMUClientTests(SimpleTestCase):
             )
             self.assertEqual(
                 client.resolve_group_id({"group_name": GPMU_PED_GROUP_NAME}),
-                "kg_18",
+                "kg_20",
             )
 
     @patch("apps.admissions.clients.gpmu_client.GPMUClient.fetch_group_page")
@@ -577,7 +578,7 @@ class GPMUClientTests(SimpleTestCase):
         sample_groups = {
             "groups": [
                 {"id": "kg_4", "name": GPMU_LECH_GROUP_NAME},
-                {"id": "kg_18", "name": GPMU_PED_GROUP_NAME},
+                {"id": "kg_20", "name": GPMU_PED_GROUP_NAME},
             ]
         }
         client = GPMUClient({"base_url": "https://spiski.gpmu.org", "page_size": 100})
@@ -602,7 +603,35 @@ class GPMUClientTests(SimpleTestCase):
 
         self.assertEqual(len(rows), 1)
         mock_page.assert_called()
-        self.assertEqual(mock_page.call_args.args[0], "kg_18")
+        self.assertEqual(mock_page.call_args.args[0], "kg_20")
+
+    def test_konk_endpoints_and_referer(self):
+        self.assertEqual(GPMUClient.GROUPS_ENDPOINT, "/api/konk/groups")
+        self.assertEqual(
+            GPMUClient.GROUPS_REFERER,
+            "https://spiski.gpmu.org/konkursnye-spiski",
+        )
+
+        client = GPMUClient({"base_url": "https://spiski.gpmu.org", "page_size": 100})
+        with patch.object(client, "_request_with_retry") as mock_request:
+            mock_response = MagicMock()
+            mock_response.json.return_value = {"groups": []}
+            mock_request.return_value = mock_response
+            client.fetch_groups()
+            url = mock_request.call_args.args[1]
+            self.assertIn("/api/konk/groups", url)
+            self.assertEqual(
+                mock_request.call_args.kwargs["headers"]["Referer"],
+                "https://spiski.gpmu.org/konkursnye-spiski",
+            )
+
+        with patch.object(client, "_request_with_retry") as mock_request:
+            mock_response = MagicMock()
+            mock_response.json.return_value = {"rows": [], "seats": {}}
+            mock_request.return_value = mock_response
+            client.fetch_group_page("kg_20", page=1, page_size=100)
+            url = mock_request.call_args.args[1]
+            self.assertIn("/api/konk/group/kg_20", url)
 
 
 ALMAZOV_SAMPLE_HTML = """
@@ -1659,7 +1688,17 @@ class AnalyticsServiceTests(TestCase):
     CONSENT_PROBABILITY_FOUR_OR_FIVE_UNIVERSITIES=1.0,
 )
 class ConsentModelingServiceTests(TestCase):
-    def _create_profile(self, direction, abiturient_id, *, position, npriority, nsummark, raw_data=None):
+    def _create_profile(
+        self,
+        direction,
+        abiturient_id,
+        *,
+        position,
+        npriority,
+        nsummark,
+        raw_data=None,
+        has_enrollment_consent=False,
+    ):
         return ApplicantProfile.objects.create(
             direction=direction,
             abiturient_id=abiturient_id,
@@ -1667,6 +1706,7 @@ class ConsentModelingServiceTests(TestCase):
             sstatus_ssp="Участвует",
             nsummark=nsummark,
             npriority_ssp=npriority,
+            has_enrollment_consent=has_enrollment_consent,
             raw_data=raw_data or {},
         )
 
@@ -1697,6 +1737,88 @@ class ConsentModelingServiceTests(TestCase):
 
         model = compute_consent_model()
         self.assertEqual(model["consent_by_abiturient"]["A1"], sechenov.id)
+
+    def test_real_consent_locks_applicant_to_that_university(self):
+        sechenov = MedicalUniversity.objects.create(
+            name=SECHENOV_NAME,
+            city=MedicalUniversity.City.MSK,
+        )
+        pediatric = MedicalUniversity.objects.create(
+            name=PEDIATRIC_NAME,
+            city=MedicalUniversity.City.SPB,
+        )
+        sechenov_lech = StudyDirection.objects.create(
+            university=sechenov,
+            name="Лечебное дело",
+            filter_params={},
+            seats=10,
+        )
+        pediatric_lech = StudyDirection.objects.create(
+            university=pediatric,
+            name="Лечебное дело",
+            filter_params={},
+            seats=10,
+        )
+
+        self._create_profile(sechenov_lech, "LOCK1", position=1, npriority=1, nsummark=300)
+        self._create_profile(
+            pediatric_lech,
+            "LOCK1",
+            position=1,
+            npriority=1,
+            nsummark=300,
+            has_enrollment_consent=True,
+        )
+
+        model = compute_consent_model()
+        self.assertNotIn("LOCK1", model["competitive_by_direction"].get(str(sechenov_lech.id), []))
+        self.assertIn("LOCK1", model["competitive_by_direction"][str(pediatric_lech.id)])
+        self.assertEqual(model["consent_by_abiturient"]["LOCK1"], pediatric.id)
+
+    def test_real_consent_skips_probabilistic_exclusion(self):
+        pediatric = MedicalUniversity.objects.create(
+            name=PEDIATRIC_NAME,
+            city=MedicalUniversity.City.SPB,
+        )
+        first_med = MedicalUniversity.objects.create(
+            name=FIRST_MED_NAME,
+            city=MedicalUniversity.City.SPB,
+        )
+        pediatric_lech = StudyDirection.objects.create(
+            university=pediatric,
+            name="Лечебное дело",
+            filter_params={},
+            seats=10,
+        )
+        first_med_lech = StudyDirection.objects.create(
+            university=first_med,
+            name="Лечебное дело",
+            filter_params={},
+            seats=10,
+        )
+
+        self._create_profile(
+            pediatric_lech,
+            "KEEP1",
+            position=1,
+            npriority=1,
+            nsummark=300,
+            has_enrollment_consent=True,
+        )
+        self._create_profile(first_med_lech, "KEEP1", position=1, npriority=1, nsummark=300)
+
+        with self.settings(
+            CONSENT_PROBABILITY_ONE_UNIVERSITY=0.0,
+            CONSENT_PROBABILITY_TWO_UNIVERSITIES=0.0,
+            CONSENT_PROBABILITY_THREE_UNIVERSITIES=0.0,
+            CONSENT_PROBABILITY_FOUR_OR_FIVE_UNIVERSITIES=0.0,
+        ):
+            model = compute_consent_model(rng=random.Random(0))
+
+        self.assertIn("KEEP1", model["medical_intent_filter"]["committed"])
+        self.assertNotIn("KEEP1", model["medical_intent_filter"]["excluded"])
+        self.assertIn("KEEP1", model["competitive_by_direction"][str(pediatric_lech.id)])
+        self.assertNotIn("KEEP1", model["competitive_by_direction"].get(str(first_med_lech.id), []))
 
     def test_consent_prefers_first_med_over_pediatric_when_passing(self):
         first_med = MedicalUniversity.objects.create(

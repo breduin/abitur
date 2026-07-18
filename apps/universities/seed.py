@@ -1,5 +1,5 @@
 FIRST_MED_LIST_URL = "https://abit.1spbgmu.ru/hod-priema/spiski-postupayushih/"
-PEDIATRIC_LIST_URL = "https://spiski.gpmu.org/spisok-podavshikh"
+PEDIATRIC_LIST_URL = "https://spiski.gpmu.org/konkursnye-spiski"
 ALMAZOV_LIST_URL = "https://abit.almazovcentre.ru/specialty/spec-course/spec-lists/"
 SZGMU_LECH_LIST_URL = "https://szgmu.ru/priem2026/spec/stage1/html/lech_budget.php"
 SZGMU_STOM_LIST_URL = "https://szgmu.ru/priem2026/spec/stage1/html/stom_budget.php"

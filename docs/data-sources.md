@@ -142,18 +142,21 @@ curl -X POST https://abit.1spbgmu.ru/applcompetlist/page/ \
 
 ### Алгоритм
 
-1. **GET** `/api/pod/group/{group_id}?page={n}&page_size=100`
-2. Пагинация: `page += 1`, пока не сработает порог или страница неполная
-3. CSRF не требуется
+1. **GET** `/api/konk/groups` — список групп, resolve `group_id` по имени направления
+2. **GET** `/api/konk/group/{group_id}?page={n}&page_size=100`
+3. Пагинация: `page += 1`, пока не сработает порог или страница неполная
+4. CSRF не требуется
 
 ### Направления (seed)
 
 | Направление    | group_id | URL |
 |----------------|----------|-----|
-| Лечебное дело  | `kg_4`   | `/api/pod/group/kg_4?page=1&page_size=100` |
-| Педиатрия      | `kg_16`  | `/api/pod/group/kg_16?page=1&page_size=100` |
+| Лечебное дело  | `kg_4`   | `/api/konk/group/kg_4?page=1&page_size=100` |
+| Педиатрия      | `kg_20`  | `/api/konk/group/kg_20?page=1&page_size=100` |
+| Стоматология   | `kg_44`  | `/api/konk/group/kg_44?page=1&page_size=100` |
 
 **Места:** берутся из `seats.total` в ответе API при каждой синхронизации
+**UI:** `https://spiski.gpmu.org/konkursnye-spiski`
 
 ### Маппинг полей ответа
 
@@ -192,8 +195,9 @@ curl -X POST https://abit.1spbgmu.ru/applcompetlist/page/ \
 ### Пример curl
 
 ```bash
-curl "https://spiski.gpmu.org/api/pod/group/kg_4?page=1&page_size=100"
-curl "https://spiski.gpmu.org/api/pod/group/kg_16?page=1&page_size=100"
+curl "https://spiski.gpmu.org/api/konk/group/kg_4?page=1&page_size=100"
+curl "https://spiski.gpmu.org/api/konk/group/kg_20?page=1&page_size=100"
+curl "https://spiski.gpmu.org/api/konk/group/kg_44?page=1&page_size=100"
 ```
 
 ---

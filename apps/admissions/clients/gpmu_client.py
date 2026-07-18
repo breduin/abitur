@@ -15,8 +15,8 @@ GPMU_STOM_GROUP_NAME = (
 
 class GPMUClient(BaseHTTPClient):
     DEFAULT_PAGE_SIZE = 100
-    GROUPS_ENDPOINT = "/api/pod/groups"
-    GROUPS_REFERER = "https://spiski.gpmu.org/spisok-podavshikh"
+    GROUPS_ENDPOINT = "/api/konk/groups"
+    GROUPS_REFERER = "https://spiski.gpmu.org/konkursnye-spiski"
 
     def __init__(self, api_config: dict[str, Any], session=None):
         super().__init__(api_config, session=session)
@@ -131,11 +131,11 @@ class GPMUClient(BaseHTTPClient):
     ) -> dict[str, Any]:
         if use_fallback:
             fallback_ip = self.api_config.get("fallback_ip")
-            url = f"https://{fallback_ip}/api/pod/group/{group_id}"
+            url = f"https://{fallback_ip}/api/konk/group/{group_id}"
             headers = {"Host": self.hostname}
             verify = False
         else:
-            url = f"{self.base_url}/api/pod/group/{group_id}"
+            url = f"{self.base_url}/api/konk/group/{group_id}"
             headers = {}
             verify = True
 
