@@ -559,7 +559,7 @@ def _serialize_competitive_lists(
     }
 
 
-def compute_consent_model(
+def compute_cascade_consent_model(
     *,
     rng: random.Random | None = None,
 ) -> dict[str, Any]:
@@ -603,11 +603,207 @@ def compute_consent_model(
                 locked_abiturient_ids.add(entry.abiturient_id)
                 consent_by_abiturient[entry.abiturient_id] = university.id
 
+    return {
+        "model": "cascade",
+        "university_rank_order": sorted(UNIVERSITY_RANK, key=UNIVERSITY_RANK.get),
+        "consent_by_abiturient": consent_by_abiturient,
+        "cutoff_scores": _build_cutoff_scores(
+            directions,
+            enrolled_by_direction,
+            competitive,
+        ),
+        "enrollment_by_direction": _serialize_enrollment_lists(enrolled_by_direction),
+        "competitive_by_direction": _serialize_competitive_lists(competitive),
+        "medical_intent_filter": medical_intent_filter,
+    }
+
+
+@dataclass
+class _UniversityChoiceCandidate:
+    university_id: int
+    university_name: str
+    priority: int
+    direction: StudyDirection
+    entry: ApplicationEntry
+
+
+def _applicant_global_sort_key(applications: list[ApplicationEntry]) -> tuple:
+    return (
+        0 if any(entry.is_olympiad for entry in applications) else 1,
+        -max(entry.nsummark for entry in applications),
+        min(entry.position for entry in applications),
+        applications[0].abiturient_id,
+    )
+
+
+def _build_applicant_choice_competitive(
+    by_abiturient: dict[str, list[ApplicationEntry]],
+    real_consent_university: dict[str, int],
+) -> dict[int, list[ApplicationEntry]]:
+    competitive: dict[int, list[ApplicationEntry]] = defaultdict(list)
+    for abiturient_id, applications in by_abiturient.items():
+        consent_university_id = real_consent_university.get(abiturient_id)
+        for entry in applications:
+            if (
+                consent_university_id is not None
+                and entry.university_id != consent_university_id
+            ):
+                continue
+            competitive[entry.direction_id].append(entry)
+
+    for direction_id, entries in competitive.items():
+        competitive[direction_id] = sorted(entries, key=_competitive_sort_key)
+    return competitive
+
+
+def _pair_base_probability(name_a: str, name_b: str) -> float:
+    if name_a not in UNIVERSITY_RANK or name_b not in UNIVERSITY_RANK:
+        raise ValueError(
+            f"Unknown university for consent choice pair: {name_a!r}, {name_b!r}."
+        )
+    if name_a == name_b:
+        raise ValueError(f"Consent choice pair requires two universities, got {name_a!r}.")
+    left, right = sorted(
+        (name_a, name_b),
+        key=lambda name: (_university_rank(name), name),
+    )
+    key = f"{left}|{right}"
+    probs = settings.CONSENT_CHOICE_PAIR_PROBS
+    if key not in probs:
+        raise ValueError(f"Missing CONSENT_CHOICE_PAIR_PROBS entry for {key}.")
+    return float(probs[key])
+
+
+def _pairwise_top_probability(
+    top_name: str,
+    low_name: str,
+    pri_top: int,
+    pri_low: int,
+) -> float:
+    base = _pair_base_probability(top_name, low_name)
+    if pri_top == pri_low:
+        probability = base
+    elif pri_top == pri_low + 1:
+        probability = 0.50
+    elif pri_top >= pri_low + 2:
+        probability = 0.30
+    elif pri_top == pri_low - 1:
+        probability = min(0.95, base + 0.15)
+    else:
+        probability = min(0.95, base + 0.30)
+    return max(0.05, min(0.95, probability))
+
+
+def _best_passing_option_at_university(
+    _abiturient_id: str,
+    university_id: int,
+    applications: list[ApplicationEntry],
+    competitive: dict[int, list[ApplicationEntry]],
+    enrolled_ids: set[str],
+    enrolled_by_direction: dict[int, list[ApplicationEntry]],
+    directions: dict[int, StudyDirection],
+) -> _UniversityChoiceCandidate | None:
+    best: tuple[int, int, _UniversityChoiceCandidate] | None = None
+    for entry in applications:
+        if entry.university_id != university_id:
+            continue
+        direction = directions[entry.direction_id]
+        seats = direction.seats or 0
+        remaining_seats = seats - len(enrolled_by_direction.get(entry.direction_id, []))
+        if remaining_seats <= 0:
+            continue
+        if not _would_pass_on_direction(
+            entry,
+            competitive.get(entry.direction_id, []),
+            enrolled_ids,
+            remaining_seats,
+        ):
+            continue
+        candidate = _UniversityChoiceCandidate(
+            university_id=university_id,
+            university_name=entry.university_name,
+            priority=entry.npriority_ssp,
+            direction=direction,
+            entry=entry,
+        )
+        key = (entry.npriority_ssp, entry.position)
+        if best is None or key < (best[0], best[1]):
+            best = (entry.npriority_ssp, entry.position, candidate)
+    if best is None:
+        return None
+    return best[2]
+
+
+def _passing_university_candidates(
+    abiturient_id: str,
+    applications: list[ApplicationEntry],
+    competitive: dict[int, list[ApplicationEntry]],
+    enrolled_ids: set[str],
+    enrolled_by_direction: dict[int, list[ApplicationEntry]],
+    directions: dict[int, StudyDirection],
+    *,
+    only_university_id: int | None = None,
+) -> list[_UniversityChoiceCandidate]:
+    university_ids: set[int] = set()
+    for entry in applications:
+        if only_university_id is not None and entry.university_id != only_university_id:
+            continue
+        university_ids.add(entry.university_id)
+
+    candidates: list[_UniversityChoiceCandidate] = []
+    for university_id in university_ids:
+        option = _best_passing_option_at_university(
+            abiturient_id,
+            university_id,
+            applications,
+            competitive,
+            enrolled_ids,
+            enrolled_by_direction,
+            directions,
+        )
+        if option is not None:
+            candidates.append(option)
+    return candidates
+
+
+def _choose_university_tournament(
+    candidates: list[_UniversityChoiceCandidate],
+    rng: random.Random,
+) -> _UniversityChoiceCandidate:
+    ordered = sorted(
+        candidates,
+        key=lambda item: (_university_rank(item.university_name), item.university_name),
+    )
+    current = ordered[0]
+    for challenger in ordered[1:]:
+        probability_keep_top = _pairwise_top_probability(
+            current.university_name,
+            challenger.university_name,
+            current.priority,
+            challenger.priority,
+        )
+        if rng.random() >= probability_keep_top:
+            current = challenger
+    return current
+
+
+def _build_cutoff_scores(
+    directions: dict[int, StudyDirection],
+    enrolled_by_direction: dict[int, list[ApplicationEntry]],
+    competitive: dict[int, list[ApplicationEntry]],
+) -> list[dict[str, Any]]:
     cutoff_scores = []
-    for direction in sorted(directions.values(), key=lambda item: (item.university.name, item.name)):
+    for direction in sorted(
+        directions.values(),
+        key=lambda item: (item.university.name, item.name),
+    ):
         enrolled = enrolled_by_direction.get(direction.id, [])
         competitive_list = competitive.get(direction.id, [])
-        cutoff_score = enrolled[-1].nsummark if enrolled else None
+        if enrolled:
+            marginal = sorted(enrolled, key=_competitive_sort_key)[-1]
+            cutoff_score = marginal.nsummark
+        else:
+            cutoff_score = None
         cutoff_scores.append(
             {
                 "direction_id": direction.id,
@@ -619,15 +815,96 @@ def compute_consent_model(
                 "competitive_count": len(competitive_list),
             }
         )
+    return cutoff_scores
+
+
+def compute_applicant_choice_consent_model(
+    *,
+    rng: random.Random | None = None,
+) -> dict[str, Any]:
+    random_generator = rng or random.Random()
+    by_abiturient, directions, universities = _load_applications()
+    real_consent_university = _load_real_consent_universities(universities)
+    by_abiturient, medical_intent_filter = _apply_medical_intent_probabilistic_filter(
+        by_abiturient,
+        real_consent_abiturient_ids=set(real_consent_university),
+        rng=random_generator,
+    )
+
+    competitive = _build_applicant_choice_competitive(
+        by_abiturient,
+        real_consent_university,
+    )
+    enrolled_by_direction: dict[int, list[ApplicationEntry]] = defaultdict(list)
+    enrolled_ids: set[str] = set()
+    consent_by_abiturient: dict[str, int] = {}
+
+    ordered_abiturient_ids = sorted(
+        by_abiturient,
+        key=lambda abiturient_id: _applicant_global_sort_key(by_abiturient[abiturient_id]),
+    )
+
+    for abiturient_id in ordered_abiturient_ids:
+        if abiturient_id in enrolled_ids:
+            continue
+        applications = by_abiturient[abiturient_id]
+        real_consent_university_id = real_consent_university.get(abiturient_id)
+
+        if real_consent_university_id is not None:
+            candidates = _passing_university_candidates(
+                abiturient_id,
+                applications,
+                competitive,
+                enrolled_ids,
+                enrolled_by_direction,
+                directions,
+                only_university_id=real_consent_university_id,
+            )
+            if not candidates:
+                continue
+            chosen = candidates[0]
+        else:
+            candidates = _passing_university_candidates(
+                abiturient_id,
+                applications,
+                competitive,
+                enrolled_ids,
+                enrolled_by_direction,
+                directions,
+            )
+            if not candidates:
+                continue
+            if len(candidates) == 1:
+                chosen = candidates[0]
+            else:
+                chosen = _choose_university_tournament(candidates, random_generator)
+
+        enrolled_by_direction[chosen.direction.id].append(chosen.entry)
+        enrolled_ids.add(abiturient_id)
+        consent_by_abiturient[abiturient_id] = chosen.university_id
 
     return {
+        "model": "applicant_choice",
         "university_rank_order": sorted(UNIVERSITY_RANK, key=UNIVERSITY_RANK.get),
         "consent_by_abiturient": consent_by_abiturient,
-        "cutoff_scores": cutoff_scores,
+        "cutoff_scores": _build_cutoff_scores(
+            directions,
+            enrolled_by_direction,
+            competitive,
+        ),
         "enrollment_by_direction": _serialize_enrollment_lists(enrolled_by_direction),
         "competitive_by_direction": _serialize_competitive_lists(competitive),
         "medical_intent_filter": medical_intent_filter,
     }
+
+
+def compute_consent_model(
+    *,
+    rng: random.Random | None = None,
+) -> dict[str, Any]:
+    if settings.CONSENT_MODEL == "applicant_choice":
+        return compute_applicant_choice_consent_model(rng=rng)
+    return compute_cascade_consent_model(rng=rng)
 
 
 def _find_rank(abiturient_id: str, ordered_ids: list[str]) -> int | None:

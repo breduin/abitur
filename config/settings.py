@@ -124,17 +124,39 @@ DEFAULT_USER_AGENT = (
     "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 )
 
+# Consent modeling: CONSENT_MODEL=cascade|applicant_choice
+# CONSENT_CHOICE_PAIR_PROBS JSON: {"ВузA|ВузB": 0.7, ...} — P(выбрать вуз с
+# лучшим UNIVERSITY_RANK) при равных приоритетах. Порядок имён в ключе не важен.
+from apps.universities.seed import (  # noqa: E402
+    ALMAZOV_NAME,
+    FIRST_MED_NAME,
+    MSU_NAME,
+    PEDIATRIC_NAME,
+    PIROGOV_NAME,
+    ROSUNIMED_NAME,
+    SECHENOV_NAME,
+    SPBU_NAME,
+    SZGMU_NAME,
+)
+
+CONSENT_MODEL = env("CONSENT_MODEL", default="cascade")
+if CONSENT_MODEL not in ("cascade", "applicant_choice"):
+    raise ValueError(
+        "CONSENT_MODEL must be 'cascade' or 'applicant_choice', "
+        f"got {CONSENT_MODEL!r}."
+    )
+
 CONSENT_PROBABILITY_ONE_UNIVERSITY = env.float(
     "CONSENT_PROBABILITY_ONE_UNIVERSITY",
-    default=0.25,
+    default=0.50,
 )
 CONSENT_PROBABILITY_TWO_UNIVERSITIES = env.float(
     "CONSENT_PROBABILITY_TWO_UNIVERSITIES",
-    default=0.50,
+    default=0.75,
 )
 CONSENT_PROBABILITY_THREE_UNIVERSITIES = env.float(
     "CONSENT_PROBABILITY_THREE_UNIVERSITIES",
-    default=0.75,
+    default=0.90,
 )
 CONSENT_PROBABILITY_FOUR_OR_FIVE_UNIVERSITIES = env.float(
     "CONSENT_PROBABILITY_FOUR_OR_FIVE_UNIVERSITIES",
@@ -152,3 +174,102 @@ for value, setting_name in (
 ):
     if not 0.0 <= value <= 1.0:
         raise ValueError(f"{setting_name} must be between 0.0 and 1.0 inclusive.")
+
+# Ranks mirrored from consent_modeling_service.UNIVERSITY_RANK (avoid circular import).
+_CONSENT_CHOICE_UNIVERSITY_RANK: dict[str, int] = {
+    SECHENOV_NAME: 100,
+    PIROGOV_NAME: 101,
+    MSU_NAME: 102,
+    ROSUNIMED_NAME: 103,
+    FIRST_MED_NAME: 200,
+    PEDIATRIC_NAME: 201,
+    SZGMU_NAME: 202,
+    ALMAZOV_NAME: 203,
+    SPBU_NAME: 204,
+}
+
+
+def _consent_choice_pair_key(name_a: str, name_b: str) -> str:
+    left, right = sorted(
+        (name_a, name_b),
+        key=lambda name: (_CONSENT_CHOICE_UNIVERSITY_RANK[name], name),
+    )
+    return f"{left}|{right}"
+
+
+def _default_consent_choice_pair_probs() -> dict[str, float]:
+    names = sorted(
+        _CONSENT_CHOICE_UNIVERSITY_RANK,
+        key=lambda name: (_CONSENT_CHOICE_UNIVERSITY_RANK[name], name),
+    )
+    probs: dict[str, float] = {}
+    for index, name_a in enumerate(names):
+        for name_b in names[index + 1 :]:
+            delta = abs(
+                _CONSENT_CHOICE_UNIVERSITY_RANK[name_a]
+                - _CONSENT_CHOICE_UNIVERSITY_RANK[name_b]
+            )
+            # Same city cluster (MSK 100–103, SPB 200–204): ~0.70; cross-city: 0.90
+            probs[_consent_choice_pair_key(name_a, name_b)] = (
+                0.70 if delta <= 5 else 0.90
+            )
+    return probs
+
+
+def _normalize_consent_choice_pair_probs(
+    raw: dict[str, float],
+) -> dict[str, float]:
+    known = set(_CONSENT_CHOICE_UNIVERSITY_RANK)
+    normalized: dict[str, float] = {}
+    for key, value in raw.items():
+        if not isinstance(key, str) or "|" not in key:
+            raise ValueError(
+                f"CONSENT_CHOICE_PAIR_PROBS key must be 'NameA|NameB', got {key!r}."
+            )
+        name_a, name_b = key.split("|", 1)
+        name_a, name_b = name_a.strip(), name_b.strip()
+        if name_a not in known or name_b not in known:
+            raise ValueError(
+                f"CONSENT_CHOICE_PAIR_PROBS unknown university in {key!r}."
+            )
+        if name_a == name_b:
+            raise ValueError(
+                f"CONSENT_CHOICE_PAIR_PROBS pair must be two different universities, "
+                f"got {key!r}."
+            )
+        try:
+            probability = float(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"CONSENT_CHOICE_PAIR_PROBS[{key!r}] must be a float, got {value!r}."
+            ) from exc
+        if not 0.0 <= probability <= 1.0:
+            raise ValueError(
+                f"CONSENT_CHOICE_PAIR_PROBS[{key!r}] must be between 0.0 and 1.0, "
+                f"got {probability}."
+            )
+        pair_key = _consent_choice_pair_key(name_a, name_b)
+        normalized[pair_key] = probability
+
+    expected_keys = set(_default_consent_choice_pair_probs())
+    missing = expected_keys - set(normalized)
+    if missing:
+        sample = ", ".join(sorted(missing)[:3])
+        raise ValueError(
+            f"CONSENT_CHOICE_PAIR_PROBS missing {len(missing)} pair(s), e.g. {sample}."
+        )
+    extra = set(normalized) - expected_keys
+    if extra:
+        sample = ", ".join(sorted(extra)[:3])
+        raise ValueError(
+            f"CONSENT_CHOICE_PAIR_PROBS has unexpected pair(s), e.g. {sample}."
+        )
+    return normalized
+
+
+CONSENT_CHOICE_PAIR_PROBS = _normalize_consent_choice_pair_probs(
+    env.json(
+        "CONSENT_CHOICE_PAIR_PROBS",
+        default=_default_consent_choice_pair_probs(),
+    )
+)

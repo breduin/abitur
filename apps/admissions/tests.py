@@ -39,6 +39,10 @@ from apps.admissions.services.analytics_service import (
     save_analytics_snapshot,
 )
 from apps.admissions.services.consent_modeling_service import (
+    _pair_base_probability,
+    _pairwise_top_probability,
+    compute_applicant_choice_consent_model,
+    compute_cascade_consent_model,
     compute_consent_model,
     get_user_consent_projection,
     get_user_hypothetical_consent_projection,
@@ -51,7 +55,15 @@ from apps.admissions.services.sync_service import (
 )
 from apps.admissions.services.sync_status_service import get_sync_progress_context
 from apps.universities.models import MedicalUniversity, StudyDirection
-from apps.universities.seed import ALMAZOV_NAME, FIRST_MED_NAME, PEDIATRIC_NAME, SECHENOV_NAME, SPBU_NAME, SZGMU_NAME
+from apps.universities.seed import (
+    ALMAZOV_NAME,
+    FIRST_MED_NAME,
+    PEDIATRIC_NAME,
+    PIROGOV_NAME,
+    SECHENOV_NAME,
+    SPBU_NAME,
+    SZGMU_NAME,
+)
 from apps.users.models import User
 from django.utils import timezone
 from datetime import timedelta
@@ -1682,6 +1694,7 @@ class AnalyticsServiceTests(TestCase):
 
 
 @override_settings(
+    CONSENT_MODEL="cascade",
     CONSENT_PROBABILITY_ONE_UNIVERSITY=1.0,
     CONSENT_PROBABILITY_TWO_UNIVERSITIES=1.0,
     CONSENT_PROBABILITY_THREE_UNIVERSITIES=1.0,
@@ -2749,6 +2762,310 @@ class ConsentModelingServiceTests(TestCase):
         self.assertIn("consent_modeling", payload)
         self.assertIn("cutoff_scores", payload["consent_modeling"])
         self.assertIn("medical_intent_filter", payload["consent_modeling"])
+        self.assertEqual(payload["consent_modeling"]["model"], "cascade")
+
+
+@override_settings(
+    CONSENT_MODEL="applicant_choice",
+    CONSENT_PROBABILITY_ONE_UNIVERSITY=1.0,
+    CONSENT_PROBABILITY_TWO_UNIVERSITIES=1.0,
+    CONSENT_PROBABILITY_THREE_UNIVERSITIES=1.0,
+    CONSENT_PROBABILITY_FOUR_OR_FIVE_UNIVERSITIES=1.0,
+)
+class ApplicantChoiceConsentModelTests(TestCase):
+    def _create_profile(
+        self,
+        direction,
+        abiturient_id,
+        *,
+        position,
+        npriority,
+        nsummark,
+        raw_data=None,
+        has_enrollment_consent=False,
+    ):
+        return ApplicantProfile.objects.create(
+            direction=direction,
+            abiturient_id=abiturient_id,
+            position=position,
+            sstatus_ssp="Участвует",
+            nsummark=nsummark,
+            npriority_ssp=npriority,
+            has_enrollment_consent=has_enrollment_consent,
+            raw_data=raw_data or {},
+        )
+
+    def test_example1_equal_priority_uses_base_pair_probability(self):
+        sechenov = MedicalUniversity.objects.create(
+            name=SECHENOV_NAME,
+            city=MedicalUniversity.City.MSK,
+        )
+        pirogov = MedicalUniversity.objects.create(
+            name=PIROGOV_NAME,
+            city=MedicalUniversity.City.MSK,
+        )
+        sechenov_lech = StudyDirection.objects.create(
+            university=sechenov,
+            name="Лечебное дело",
+            filter_params={},
+            seats=10,
+        )
+        pirogov_lech = StudyDirection.objects.create(
+            university=pirogov,
+            name="Лечебное дело",
+            filter_params={},
+            seats=10,
+        )
+        self._create_profile(sechenov_lech, "X1", position=1, npriority=1, nsummark=290)
+        self._create_profile(pirogov_lech, "X1", position=1, npriority=1, nsummark=290)
+
+        class BelowThreshold:
+            def random(self):
+                return 0.69
+
+        class AboveThreshold:
+            def random(self):
+                return 0.70
+
+        sechenov_model = compute_applicant_choice_consent_model(rng=BelowThreshold())
+        pirogov_model = compute_applicant_choice_consent_model(rng=AboveThreshold())
+        self.assertEqual(sechenov_model["consent_by_abiturient"]["X1"], sechenov.id)
+        self.assertEqual(pirogov_model["consent_by_abiturient"]["X1"], pirogov.id)
+        self.assertEqual(sechenov_model["model"], "applicant_choice")
+
+    def test_example2_priority_gap_one_forces_fifty_fifty(self):
+        sechenov = MedicalUniversity.objects.create(
+            name=SECHENOV_NAME,
+            city=MedicalUniversity.City.MSK,
+        )
+        pirogov = MedicalUniversity.objects.create(
+            name=PIROGOV_NAME,
+            city=MedicalUniversity.City.MSK,
+        )
+        sechenov_ped = StudyDirection.objects.create(
+            university=sechenov,
+            name="Педиатрия",
+            filter_params={},
+            seats=10,
+        )
+        pirogov_lech = StudyDirection.objects.create(
+            university=pirogov,
+            name="Лечебное дело",
+            filter_params={},
+            seats=10,
+        )
+        self._create_profile(sechenov_ped, "Y1", position=1, npriority=2, nsummark=285)
+        self._create_profile(pirogov_lech, "Y1", position=1, npriority=1, nsummark=285)
+
+        class BelowHalf:
+            def random(self):
+                return 0.49
+
+        class AboveHalf:
+            def random(self):
+                return 0.50
+
+        sechenov_model = compute_applicant_choice_consent_model(rng=BelowHalf())
+        pirogov_model = compute_applicant_choice_consent_model(rng=AboveHalf())
+        self.assertEqual(sechenov_model["consent_by_abiturient"]["Y1"], sechenov.id)
+        self.assertEqual(
+            sechenov_model["enrollment_by_direction"][str(sechenov_ped.id)],
+            ["Y1"],
+        )
+        self.assertEqual(pirogov_model["consent_by_abiturient"]["Y1"], pirogov.id)
+
+    def test_example3_tournament_after_stronger_takes_sechenov_lech(self):
+        sechenov = MedicalUniversity.objects.create(
+            name=SECHENOV_NAME,
+            city=MedicalUniversity.City.MSK,
+        )
+        pirogov = MedicalUniversity.objects.create(
+            name=PIROGOV_NAME,
+            city=MedicalUniversity.City.MSK,
+        )
+        first_med = MedicalUniversity.objects.create(
+            name=FIRST_MED_NAME,
+            city=MedicalUniversity.City.SPB,
+        )
+        sechenov_lech = StudyDirection.objects.create(
+            university=sechenov,
+            name="Лечебное дело",
+            filter_params={},
+            seats=1,
+        )
+        sechenov_ped = StudyDirection.objects.create(
+            university=sechenov,
+            name="Педиатрия",
+            filter_params={},
+            seats=1,
+        )
+        pirogov_lech = StudyDirection.objects.create(
+            university=pirogov,
+            name="Лечебное дело",
+            filter_params={},
+            seats=1,
+        )
+        first_med_lech = StudyDirection.objects.create(
+            university=first_med,
+            name="Лечебное дело",
+            filter_params={},
+            seats=1,
+        )
+
+        # Stronger W takes Sechenov Lech (only one choice).
+        self._create_profile(sechenov_lech, "W1", position=1, npriority=1, nsummark=300)
+        self._create_profile(pirogov_lech, "W1", position=1, npriority=2, nsummark=300)
+
+        # Z: Sechenov Lech blocked; passes Sechenov Ped (pri2), Pirogov (1), First Med (1)
+        self._create_profile(sechenov_lech, "Z1", position=2, npriority=1, nsummark=280)
+        self._create_profile(sechenov_ped, "Z1", position=1, npriority=2, nsummark=280)
+        self._create_profile(pirogov_lech, "Z1", position=1, npriority=1, nsummark=280)
+        self._create_profile(first_med_lech, "Z1", position=1, npriority=1, nsummark=280)
+
+        # W also has two unis (Sechenov pri1 vs Pirogov pri2 -> p≈0.85).
+        # Z: Sechenov(pri2) vs Pirogov(pri1) -> 0.50; then Pirogov vs First Med -> 0.90.
+        class ScriptedRng:
+            def __init__(self):
+                self.values = [0.0, 0.50, 0.10]
+                self.index = 0
+
+            def random(self):
+                value = self.values[self.index]
+                self.index += 1
+                return value
+
+        model = compute_applicant_choice_consent_model(rng=ScriptedRng())
+        self.assertEqual(model["consent_by_abiturient"]["W1"], sechenov.id)
+        self.assertEqual(model["enrollment_by_direction"][str(sechenov_lech.id)], ["W1"])
+        self.assertEqual(model["consent_by_abiturient"]["Z1"], pirogov.id)
+        self.assertEqual(model["enrollment_by_direction"][str(pirogov_lech.id)], ["Z1"])
+        self.assertNotIn("Z1", model["enrollment_by_direction"].get(str(sechenov_ped.id), []))
+
+    def test_real_consent_locks_other_universities_even_if_not_passing(self):
+        sechenov = MedicalUniversity.objects.create(
+            name=SECHENOV_NAME,
+            city=MedicalUniversity.City.MSK,
+        )
+        pediatric = MedicalUniversity.objects.create(
+            name=PEDIATRIC_NAME,
+            city=MedicalUniversity.City.SPB,
+        )
+        sechenov_lech = StudyDirection.objects.create(
+            university=sechenov,
+            name="Лечебное дело",
+            filter_params={},
+            seats=1,
+        )
+        pediatric_lech = StudyDirection.objects.create(
+            university=pediatric,
+            name="Лечебное дело",
+            filter_params={},
+            seats=1,
+        )
+        # Seat at pediatric already taken by stronger applicant.
+        self._create_profile(pediatric_lech, "TOP1", position=1, npriority=1, nsummark=310)
+        self._create_profile(
+            pediatric_lech,
+            "LOCK1",
+            position=2,
+            npriority=1,
+            nsummark=300,
+            has_enrollment_consent=True,
+        )
+        self._create_profile(sechenov_lech, "LOCK1", position=1, npriority=1, nsummark=300)
+
+        model = compute_applicant_choice_consent_model(rng=random.Random(0))
+        self.assertNotIn("LOCK1", model["consent_by_abiturient"])
+        self.assertNotIn(
+            "LOCK1",
+            model["competitive_by_direction"].get(str(sechenov_lech.id), []),
+        )
+        self.assertIn("LOCK1", model["competitive_by_direction"][str(pediatric_lech.id)])
+        self.assertEqual(model["enrollment_by_direction"][str(pediatric_lech.id)], ["TOP1"])
+
+    @override_settings(CONSENT_PROBABILITY_ONE_UNIVERSITY=0.0)
+    def test_intent_filter_still_excludes(self):
+        pediatric = MedicalUniversity.objects.create(
+            name=PEDIATRIC_NAME,
+            city=MedicalUniversity.City.SPB,
+        )
+        pediatric_lech = StudyDirection.objects.create(
+            university=pediatric,
+            name="Лечебное дело",
+            filter_params={},
+            seats=1,
+        )
+        self._create_profile(pediatric_lech, "ONE1", position=1, npriority=1, nsummark=300)
+        model = compute_applicant_choice_consent_model(rng=random.Random(0))
+        self.assertIn("ONE1", model["medical_intent_filter"]["excluded"])
+        self.assertNotIn("ONE1", model["consent_by_abiturient"])
+
+    def test_facade_model_field_differs_by_setting(self):
+        sechenov = MedicalUniversity.objects.create(
+            name=SECHENOV_NAME,
+            city=MedicalUniversity.City.MSK,
+        )
+        sechenov_lech = StudyDirection.objects.create(
+            university=sechenov,
+            name="Лечебное дело",
+            filter_params={},
+            seats=1,
+        )
+        self._create_profile(sechenov_lech, "F1", position=1, npriority=1, nsummark=300)
+
+        with override_settings(CONSENT_MODEL="cascade"):
+            cascade = compute_consent_model()
+        with override_settings(CONSENT_MODEL="applicant_choice"):
+            choice = compute_consent_model()
+        self.assertEqual(cascade["model"], "cascade")
+        self.assertEqual(choice["model"], "applicant_choice")
+        self.assertEqual(compute_cascade_consent_model()["model"], "cascade")
+
+    def test_strengthen_top_priority_table(self):
+        self.assertEqual(
+            _pairwise_top_probability(SECHENOV_NAME, PIROGOV_NAME, 1, 2),
+            min(0.95, 0.70 + 0.15),
+        )
+        self.assertEqual(
+            _pairwise_top_probability(SECHENOV_NAME, PIROGOV_NAME, 1, 3),
+            min(0.95, 0.70 + 0.30),
+        )
+        self.assertEqual(
+            _pairwise_top_probability(SECHENOV_NAME, PIROGOV_NAME, 2, 1),
+            0.50,
+        )
+        self.assertEqual(
+            _pairwise_top_probability(SECHENOV_NAME, PIROGOV_NAME, 3, 1),
+            0.30,
+        )
+
+    def test_missing_pair_raises(self):
+        with override_settings(CONSENT_CHOICE_PAIR_PROBS={}):
+            with self.assertRaises(ValueError):
+                _pair_base_probability(SECHENOV_NAME, PIROGOV_NAME)
+
+    def test_smoke_consumers_accept_applicant_choice_payload(self):
+        sechenov = MedicalUniversity.objects.create(
+            name=SECHENOV_NAME,
+            city=MedicalUniversity.City.MSK,
+        )
+        sechenov_lech = StudyDirection.objects.create(
+            university=sechenov,
+            name="Лечебное дело",
+            filter_params={},
+            seats=1,
+        )
+        self._create_profile(sechenov_lech, "S1", position=1, npriority=1, nsummark=300)
+        user = User.objects.create_user(abiturient_id="S1", is_verified=True)
+        user.applied_universities.add(sechenov)
+
+        model = compute_applicant_choice_consent_model(rng=random.Random(0))
+        projection = get_user_consent_projection(user, model)
+        self.assertTrue(projection)
+        labels = build_enrollment_labels_by_abiturient(model)
+        self.assertIn("S1", labels)
+        payload = save_analytics_snapshot()
+        self.assertEqual(payload["consent_modeling"]["model"], "applicant_choice")
 
 
 class AuthTests(TestCase):
