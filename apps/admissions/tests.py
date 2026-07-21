@@ -2,6 +2,7 @@ from django.test import SimpleTestCase, TestCase, override_settings
 from unittest.mock import MagicMock, patch
 import random
 
+from django.conf import settings
 from apps.admissions.clients.almazov_client import AlmazovClient
 from apps.admissions.clients.almazov_html_parser import parse_seats, parse_table, rows_to_dicts
 from apps.admissions.clients.spbu_client import SPBUClient
@@ -3043,6 +3044,98 @@ class ApplicantChoiceConsentModelTests(TestCase):
         with override_settings(CONSENT_CHOICE_PAIR_PROBS={}):
             with self.assertRaises(ValueError):
                 _pair_base_probability(SECHENOV_NAME, PIROGOV_NAME)
+
+    def test_projection_uses_active_competition_for_applicant_choice(self):
+        pediatric = MedicalUniversity.objects.create(name=PEDIATRIC_NAME, city=MedicalUniversity.City.SPB)
+        almazov = MedicalUniversity.objects.create(name=ALMAZOV_NAME, city=MedicalUniversity.City.SPB)
+        pediatric_ped = StudyDirection.objects.create(
+            university=pediatric,
+            name="Педиатрия",
+            filter_params={},
+            seats=20,
+        )
+        almazov_lech = StudyDirection.objects.create(
+            university=almazov,
+            name="Лечебное дело",
+            filter_params={},
+            seats=2,
+        )
+
+        for index in range(1, 13):
+            score = 320 - index
+            self._create_profile(pediatric_ped, f"C{index}", position=index, npriority=1, nsummark=score)
+            self._create_profile(almazov_lech, f"C{index}", position=index, npriority=2, nsummark=score)
+
+        self._create_profile(almazov_lech, "A1", position=100, npriority=1, nsummark=280)
+        self._create_profile(almazov_lech, "A2", position=101, npriority=1, nsummark=279)
+
+        self._create_profile(pediatric_ped, "USERA", position=13, npriority=1, nsummark=290)
+        self._create_profile(almazov_lech, "USERA", position=13, npriority=2, nsummark=290)
+
+        user = User.objects.create_user(abiturient_id="USERA", is_verified=True)
+        user.applied_universities.add(pediatric, almazov)
+
+        pair_probs = dict(settings.CONSENT_CHOICE_PAIR_PROBS)
+        pair_probs[f"{PEDIATRIC_NAME}|{ALMAZOV_NAME}"] = 1.0
+        with override_settings(CONSENT_CHOICE_PAIR_PROBS=pair_probs):
+            model = compute_applicant_choice_consent_model(rng=random.Random(0))
+        by_uni = {row.university_name: row for row in get_user_consent_projection(user, model)}
+
+        self.assertEqual(by_uni[PEDIATRIC_NAME].status, "admitted")
+        almazov_row = by_uni[ALMAZOV_NAME]
+        self.assertEqual(almazov_row.status, "consent_other_university")
+        self.assertTrue(almazov_row.passes_enrollment)
+        self.assertTrue(almazov_row.is_hypothetical_competitive)
+        self.assertEqual(almazov_row.competitive_position, 1)
+        self.assertEqual(almazov_row.cutoff_score, 279)
+
+    def test_projection_cutoff_uses_active_semantics_for_applicant_choice(self):
+        pediatric = MedicalUniversity.objects.create(name=PEDIATRIC_NAME, city=MedicalUniversity.City.SPB)
+        first_med = MedicalUniversity.objects.create(name=FIRST_MED_NAME, city=MedicalUniversity.City.SPB)
+        pediatric_lech = StudyDirection.objects.create(
+            university=pediatric,
+            name="Лечебное дело",
+            filter_params={},
+            seats=2,
+        )
+        first_med_lech = StudyDirection.objects.create(
+            university=first_med,
+            name="Лечебное дело",
+            filter_params={},
+            seats=3,
+        )
+
+        # High-score entrants choose First Med by priority 1.
+        self._create_profile(pediatric_lech, "H1", position=1, npriority=2, nsummark=300)
+        self._create_profile(first_med_lech, "H1", position=1, npriority=1, nsummark=300)
+        self._create_profile(pediatric_lech, "H2", position=2, npriority=2, nsummark=299)
+        self._create_profile(first_med_lech, "H2", position=2, npriority=1, nsummark=299)
+
+        # Local competition for Pediatric.
+        self._create_profile(pediatric_lech, "L1", position=3, npriority=1, nsummark=281)
+        self._create_profile(pediatric_lech, "L2", position=4, npriority=1, nsummark=280)
+
+        # User consents to First Med but wants to see active pass at Pediatric.
+        self._create_profile(pediatric_lech, "USERB", position=5, npriority=2, nsummark=290)
+        self._create_profile(first_med_lech, "USERB", position=3, npriority=1, nsummark=290)
+
+        user = User.objects.create_user(abiturient_id="USERB", is_verified=True)
+        user.applied_universities.add(pediatric, first_med)
+
+        model = compute_applicant_choice_consent_model(rng=random.Random(0))
+        by_uni = {row.university_name: row for row in get_user_consent_projection(user, model)}
+        pediatric_row = by_uni[PEDIATRIC_NAME]
+        first_med_row = by_uni[FIRST_MED_NAME]
+        cutoff_by_direction = {
+            item["direction_id"]: item["cutoff_score"] for item in model["cutoff_scores"]
+        }
+
+        self.assertEqual(first_med_row.status, "admitted")
+        self.assertEqual(pediatric_row.status, "consent_other_university")
+        self.assertTrue(pediatric_row.passes_enrollment)
+        # Active pass boundary should ignore H1/H2 already consented elsewhere.
+        self.assertEqual(pediatric_row.cutoff_score, 280)
+        self.assertEqual(pediatric_row.actual_cutoff_score, cutoff_by_direction[pediatric_lech.id])
 
     def test_smoke_consumers_accept_applicant_choice_payload(self):
         sechenov = MedicalUniversity.objects.create(

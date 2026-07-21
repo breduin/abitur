@@ -73,6 +73,7 @@ class ConsentProjectionResult:
     is_applied: bool
     status: str
     status_label: str
+    actual_cutoff_score: int | None = None
     passes_enrollment: bool = False
     is_hypothetical_competitive: bool = False
     consent_university_name: str | None = None
@@ -1025,6 +1026,44 @@ def _compute_passes_enrollment(
     return competitive_position <= direction.seats
 
 
+def _projection_competitive_ids_for_direction(
+    direction: StudyDirection,
+    competitive_ids: list[str],
+    consent_modeling: dict[str, Any],
+) -> list[str]:
+    """Return active competition ids for projection.
+
+    For applicant_choice we exclude entrants who already chose consent
+    in another university; they should not affect hypothetical positions.
+    """
+    if consent_modeling.get("model") != "applicant_choice":
+        return competitive_ids
+
+    consent_by_abiturient = consent_modeling.get("consent_by_abiturient") or {}
+    return [
+        abiturient_id
+        for abiturient_id in competitive_ids
+        if (
+            consent_by_abiturient.get(abiturient_id) is None
+            or consent_by_abiturient.get(abiturient_id) == direction.university_id
+        )
+    ]
+
+
+def _projection_cutoff_score_from_entries(
+    entries: list[ApplicationEntry],
+    seats: int | None,
+    excluded_ids: set[str] | None = None,
+) -> int | None:
+    if not seats or seats <= 0:
+        return None
+    active_entries = _active_competitive_list(entries, excluded_ids or set())
+    if not active_entries:
+        return None
+    boundary_index = min(seats, len(active_entries)) - 1
+    return active_entries[boundary_index].nsummark
+
+
 def get_user_consent_projection(
     user,
     consent_modeling: dict[str, Any] | None,
@@ -1075,7 +1114,12 @@ def get_user_consent_projection(
         ).first()
 
         direction_key = str(direction.id)
-        competitive_ids = competitive_by_direction.get(direction_key, [])
+        competitive_ids = _projection_competitive_ids_for_direction(
+            direction,
+            competitive_by_direction.get(direction_key, []),
+            consent_modeling,
+        )
+        direction_list = _build_competitive_entries(direction, university, competitive_ids)
         enrolled_position = _find_rank(
             user.abiturient_id,
             enrollment_by_direction.get(direction_key, []),
@@ -1093,7 +1137,6 @@ def get_user_consent_projection(
         )
 
         if is_admitted_other_direction and profile is not None:
-            direction_list = _build_competitive_entries(direction, university, competitive_ids)
             counterfactual_enrolled_ids = _counterfactual_enrolled_ids_for_direction(
                 university.id,
                 direction.id,
@@ -1111,6 +1154,15 @@ def get_user_consent_projection(
                 seats,
             )
             is_hypothetical_competitive = True
+            if consent_modeling.get("model") == "applicant_choice":
+                cutoff_score = _projection_cutoff_score_from_entries(
+                    direction_list,
+                    direction.seats,
+                    counterfactual_enrolled_ids,
+                )
+            else:
+                cutoff_score = cutoff_by_direction.get(direction.id)
+            actual_cutoff_score = cutoff_by_direction.get(direction.id)
         else:
             competitive_position, is_hypothetical_competitive = _resolve_competitive_position(
                 direction,
@@ -1123,6 +1175,14 @@ def get_user_consent_projection(
                 enrolled_position,
                 competitive_position,
             )
+            if consent_modeling.get("model") == "applicant_choice":
+                cutoff_score = _projection_cutoff_score_from_entries(
+                    direction_list,
+                    direction.seats,
+                )
+            else:
+                cutoff_score = cutoff_by_direction.get(direction.id)
+            actual_cutoff_score = cutoff_by_direction.get(direction.id)
 
         if is_admitted:
             status = "admitted"
@@ -1158,7 +1218,8 @@ def get_user_consent_projection(
                 enrollment_position=enrolled_position,
                 nsummark=profile.nsummark if profile else None,
                 npriority_ssp=profile.npriority_ssp if profile else None,
-                cutoff_score=cutoff_by_direction.get(direction.id),
+                cutoff_score=cutoff_score,
+                actual_cutoff_score=actual_cutoff_score,
                 is_admitted=is_admitted,
                 is_applied=True,
                 status=status,
@@ -1269,7 +1330,20 @@ def get_user_hypothetical_consent_projection(
 
         user_score = _user_projection_score(user, university)
         direction_key = str(direction.id)
-        competitive_ids = competitive_by_direction.get(direction_key, [])
+        competitive_ids = _projection_competitive_ids_for_direction(
+            direction,
+            competitive_by_direction.get(direction_key, []),
+            consent_modeling,
+        )
+        if consent_modeling.get("model") == "applicant_choice":
+            direction_list = _build_competitive_entries(direction, university, competitive_ids)
+            cutoff_score = _projection_cutoff_score_from_entries(
+                direction_list,
+                direction.seats,
+            )
+        else:
+            cutoff_score = cutoff_by_direction.get(direction.id)
+        actual_cutoff_score = cutoff_by_direction.get(direction.id)
         competitive_position = (
             _hypothetical_competitive_position(
                 direction,
@@ -1297,7 +1371,8 @@ def get_user_hypothetical_consent_projection(
                 enrollment_position=None,
                 nsummark=user_score,
                 npriority_ssp=None,
-                cutoff_score=cutoff_by_direction.get(direction.id),
+                cutoff_score=cutoff_score,
+                actual_cutoff_score=actual_cutoff_score,
                 is_admitted=False,
                 is_applied=False,
                 status="hypothetical",
