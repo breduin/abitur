@@ -2161,7 +2161,7 @@ class ConsentModelingServiceTests(TestCase):
                 f"ST{index}",
                 position=index,
                 npriority=1,
-                nsummark=300 - index,
+                nsummark=280 - index,
             )
         self._create_profile(first_med_lech, "USERB", position=1, npriority=1, nsummark=287)
         self._create_profile(spbu_lech, "USERB", position=6, npriority=2, nsummark=287)
@@ -2195,6 +2195,7 @@ class ConsentModelingServiceTests(TestCase):
             seats=201,
         )
 
+        self._create_profile(pediatric_lech, "OTHER1", position=1, npriority=1, nsummark=280)
         self._create_profile(pediatric_lech, "USERY", position=14, npriority=2, nsummark=290)
         self._create_profile(pediatric_ped, "USERY", position=9, npriority=1, nsummark=290)
 
@@ -2517,7 +2518,8 @@ class ConsentModelingServiceTests(TestCase):
                 npriority=1,
                 nsummark=295,
             )
-        self._create_profile(pediatric_ped, "USERX", position=1, npriority=1, nsummark=290)
+        self._create_profile(pediatric_ped, "KEEP1", position=1, npriority=1, nsummark=280)
+        self._create_profile(pediatric_ped, "USERX", position=2, npriority=1, nsummark=290)
         self._create_profile(first_med_lech, "USERX", position=7, npriority=2, nsummark=287)
 
         user = User.objects.create_user(abiturient_id="USERX", is_verified=True)
@@ -3084,12 +3086,16 @@ class ApplicantChoiceConsentModelTests(TestCase):
         self.assertEqual(by_uni[PEDIATRIC_NAME].status, "admitted")
         almazov_row = by_uni[ALMAZOV_NAME]
         self.assertEqual(almazov_row.status, "consent_other_university")
-        self.assertTrue(almazov_row.passes_enrollment)
         self.assertTrue(almazov_row.is_hypothetical_competitive)
         self.assertEqual(almazov_row.competitive_position, 1)
+        cutoff_by_direction = {
+            item["direction_id"]: item["cutoff_score"] for item in model["cutoff_scores"]
+        }
+        self.assertEqual(almazov_row.cutoff_score, cutoff_by_direction[almazov_lech.id])
         self.assertEqual(almazov_row.cutoff_score, 279)
+        self.assertTrue(almazov_row.passes_enrollment)  # 290 > 279
 
-    def test_projection_cutoff_uses_active_semantics_for_applicant_choice(self):
+    def test_passes_enrollment_by_score_above_and_below_cutoff(self):
         pediatric = MedicalUniversity.objects.create(name=PEDIATRIC_NAME, city=MedicalUniversity.City.SPB)
         first_med = MedicalUniversity.objects.create(name=FIRST_MED_NAME, city=MedicalUniversity.City.SPB)
         pediatric_lech = StudyDirection.objects.create(
@@ -3102,40 +3108,105 @@ class ApplicantChoiceConsentModelTests(TestCase):
             university=first_med,
             name="Лечебное дело",
             filter_params={},
-            seats=3,
+            seats=5,
         )
 
-        # High-score entrants choose First Med by priority 1.
         self._create_profile(pediatric_lech, "H1", position=1, npriority=2, nsummark=300)
         self._create_profile(first_med_lech, "H1", position=1, npriority=1, nsummark=300)
         self._create_profile(pediatric_lech, "H2", position=2, npriority=2, nsummark=299)
         self._create_profile(first_med_lech, "H2", position=2, npriority=1, nsummark=299)
-
-        # Local competition for Pediatric.
         self._create_profile(pediatric_lech, "L1", position=3, npriority=1, nsummark=281)
         self._create_profile(pediatric_lech, "L2", position=4, npriority=1, nsummark=280)
 
-        # User consents to First Med but wants to see active pass at Pediatric.
-        self._create_profile(pediatric_lech, "USERB", position=5, npriority=2, nsummark=290)
-        self._create_profile(first_med_lech, "USERB", position=3, npriority=1, nsummark=290)
+        self._create_profile(pediatric_lech, "USERHI", position=5, npriority=2, nsummark=290)
+        self._create_profile(first_med_lech, "USERHI", position=3, npriority=1, nsummark=290)
+        self._create_profile(pediatric_lech, "USERLO", position=6, npriority=2, nsummark=270)
+        self._create_profile(first_med_lech, "USERLO", position=4, npriority=1, nsummark=270)
 
-        user = User.objects.create_user(abiturient_id="USERB", is_verified=True)
-        user.applied_universities.add(pediatric, first_med)
+        user_hi = User.objects.create_user(abiturient_id="USERHI", is_verified=True)
+        user_hi.applied_universities.add(pediatric, first_med)
+        user_lo = User.objects.create_user(abiturient_id="USERLO", is_verified=True)
+        user_lo.applied_universities.add(pediatric, first_med)
 
         model = compute_applicant_choice_consent_model(rng=random.Random(0))
-        by_uni = {row.university_name: row for row in get_user_consent_projection(user, model)}
-        pediatric_row = by_uni[PEDIATRIC_NAME]
-        first_med_row = by_uni[FIRST_MED_NAME]
-        cutoff_by_direction = {
-            item["direction_id"]: item["cutoff_score"] for item in model["cutoff_scores"]
-        }
+        hi_by_uni = {row.university_name: row for row in get_user_consent_projection(user_hi, model)}
+        lo_by_uni = {row.university_name: row for row in get_user_consent_projection(user_lo, model)}
 
-        self.assertEqual(first_med_row.status, "admitted")
-        self.assertEqual(pediatric_row.status, "consent_other_university")
-        self.assertTrue(pediatric_row.passes_enrollment)
-        # Active pass boundary should ignore H1/H2 already consented elsewhere.
-        self.assertEqual(pediatric_row.cutoff_score, 280)
-        self.assertEqual(pediatric_row.actual_cutoff_score, cutoff_by_direction[pediatric_lech.id])
+        self.assertEqual(hi_by_uni[FIRST_MED_NAME].status, "admitted")
+        pediatric_hi = hi_by_uni[PEDIATRIC_NAME]
+        self.assertEqual(pediatric_hi.status, "consent_other_university")
+        self.assertEqual(pediatric_hi.cutoff_score, 280)
+        self.assertTrue(pediatric_hi.passes_enrollment)
+
+        self.assertEqual(lo_by_uni[FIRST_MED_NAME].status, "admitted")
+        pediatric_lo = lo_by_uni[PEDIATRIC_NAME]
+        self.assertEqual(pediatric_lo.status, "consent_other_university")
+        self.assertEqual(pediatric_lo.cutoff_score, 280)
+        self.assertFalse(pediatric_lo.passes_enrollment)
+
+    def test_passes_enrollment_tie_break_by_competitive_position(self):
+        pediatric = MedicalUniversity.objects.create(name=PEDIATRIC_NAME, city=MedicalUniversity.City.SPB)
+        first_med = MedicalUniversity.objects.create(name=FIRST_MED_NAME, city=MedicalUniversity.City.SPB)
+        pediatric_lech = StudyDirection.objects.create(
+            university=pediatric,
+            name="Лечебное дело",
+            filter_params={},
+            seats=2,
+        )
+        first_med_lech = StudyDirection.objects.create(
+            university=first_med,
+            name="Лечебное дело",
+            filter_params={},
+            seats=5,
+        )
+
+        for index in range(1, 4):
+            self._create_profile(
+                first_med_lech,
+                f"FM{index}",
+                position=index,
+                npriority=1,
+                nsummark=310 - index,
+            )
+
+        # Same score 285: TIEHI ranks above enrolled marginal, TIELO below.
+        self._create_profile(pediatric_lech, "TIEHI", position=5, npriority=2, nsummark=285)
+        self._create_profile(first_med_lech, "TIEHI", position=10, npriority=1, nsummark=285)
+        self._create_profile(pediatric_lech, "E1", position=10, npriority=1, nsummark=285)
+        self._create_profile(pediatric_lech, "E2", position=20, npriority=1, nsummark=285)
+        self._create_profile(pediatric_lech, "TIELO", position=30, npriority=2, nsummark=285)
+        self._create_profile(first_med_lech, "TIELO", position=11, npriority=1, nsummark=285)
+
+        user_hi = User.objects.create_user(abiturient_id="TIEHI", is_verified=True)
+        user_hi.applied_universities.add(pediatric, first_med)
+        user_lo = User.objects.create_user(abiturient_id="TIELO", is_verified=True)
+        user_lo.applied_universities.add(pediatric, first_med)
+
+        model = compute_applicant_choice_consent_model(rng=random.Random(0))
+        self.assertEqual(
+            next(item for item in model["cutoff_scores"] if item["direction_id"] == pediatric_lech.id)[
+                "cutoff_score"
+            ],
+            285,
+        )
+        self.assertEqual(model["enrollment_by_direction"][str(pediatric_lech.id)], ["E1", "E2"])
+
+        hi_row = next(
+            row
+            for row in get_user_consent_projection(user_hi, model)
+            if row.university_name == PEDIATRIC_NAME
+        )
+        lo_row = next(
+            row
+            for row in get_user_consent_projection(user_lo, model)
+            if row.university_name == PEDIATRIC_NAME
+        )
+        self.assertEqual(hi_row.cutoff_score, 285)
+        self.assertEqual(lo_row.cutoff_score, 285)
+        self.assertEqual(hi_row.status, "consent_other_university")
+        self.assertEqual(lo_row.status, "consent_other_university")
+        self.assertTrue(hi_row.passes_enrollment)
+        self.assertFalse(lo_row.passes_enrollment)
 
     def test_smoke_consumers_accept_applicant_choice_payload(self):
         sechenov = MedicalUniversity.objects.create(

@@ -26,18 +26,7 @@
                 <td>{% if row.nsummark is not None %}{{ row.nsummark }}{% else %}—{% endif %}</td>
                 <td>{% if row.position %}{{ row.position }}{% else %}—{% endif %}</td>
                 <td class="text-muted small">{% if row.position_label %}{{ row.position_label }}{% else %}—{% endif %}</td>
-                <td>
-                    {% if row.cutoff_score is not None %}
-                        <div>{{ row.cutoff_score }}</div>
-                        {% if row.actual_cutoff_score is not None and row.actual_cutoff_score != row.cutoff_score %}
-                            <div class="small text-muted">факт: {{ row.actual_cutoff_score }}</div>
-                        {% endif %}
-                    {% elif row.actual_cutoff_score is not None %}
-                        <div>{{ row.actual_cutoff_score }}</div>
-                    {% else %}
-                        —
-                    {% endif %}
-                </td>
+                <td>{% if row.cutoff_score is not None %}{{ row.cutoff_score }}{% else %}—{% endif %}</td>
                 <td>
                     {% if row.is_admitted %}
                         <span class="badge bg-success">{{ row.status_label }}</span>
