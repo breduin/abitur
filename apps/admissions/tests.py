@@ -3208,6 +3208,53 @@ class ApplicantChoiceConsentModelTests(TestCase):
         self.assertTrue(hi_row.passes_enrollment)
         self.assertFalse(lo_row.passes_enrollment)
 
+    def test_passes_enrollment_false_when_position_beyond_seats(self):
+        first_med = MedicalUniversity.objects.create(name=FIRST_MED_NAME, city=MedicalUniversity.City.SPB)
+        pediatric = MedicalUniversity.objects.create(name=PEDIATRIC_NAME, city=MedicalUniversity.City.SPB)
+        first_med_ped = StudyDirection.objects.create(
+            university=first_med,
+            name="Педиатрия",
+            filter_params={},
+            seats=2,
+        )
+        pediatric_ped = StudyDirection.objects.create(
+            university=pediatric,
+            name="Педиатрия",
+            filter_params={},
+            seats=10,
+        )
+
+        # Fill First Med pediatrics with same score as user; user consents elsewhere.
+        self._create_profile(first_med_ped, "E1", position=1, npriority=1, nsummark=287)
+        self._create_profile(first_med_ped, "E2", position=2, npriority=1, nsummark=287)
+        for index in range(3, 20):
+            self._create_profile(
+                first_med_ped,
+                f"X{index}",
+                position=index,
+                npriority=1,
+                nsummark=287,
+            )
+        self._create_profile(first_med_ped, "USERP", position=50, npriority=2, nsummark=287)
+        self._create_profile(pediatric_ped, "USERP", position=1, npriority=1, nsummark=287)
+
+        user = User.objects.create_user(abiturient_id="USERP", is_verified=True)
+        user.applied_universities.add(first_med, pediatric)
+
+        pair_probs = dict(settings.CONSENT_CHOICE_PAIR_PROBS)
+        pair_probs[f"{PEDIATRIC_NAME}|{FIRST_MED_NAME}"] = 1.0
+        with override_settings(CONSENT_CHOICE_PAIR_PROBS=pair_probs):
+            model = compute_applicant_choice_consent_model(rng=random.Random(0))
+        row = next(
+            item
+            for item in get_user_consent_projection(user, model)
+            if item.university_name == FIRST_MED_NAME and item.direction_name == "Педиатрия"
+        )
+        self.assertEqual(row.status, "consent_other_university")
+        self.assertEqual(row.cutoff_score, 287)
+        self.assertGreater(row.competitive_position, row.seats)
+        self.assertFalse(row.passes_enrollment)
+
     def test_smoke_consumers_accept_applicant_choice_payload(self):
         sechenov = MedicalUniversity.objects.create(
             name=SECHENOV_NAME,

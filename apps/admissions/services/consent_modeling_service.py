@@ -1054,13 +1054,45 @@ def _marginal_enrolled_abiturient_id(
     return marginal.abiturient_id
 
 
+def _rank_in_entries(
+    abiturient_id: str,
+    entries: list[ApplicationEntry],
+) -> int | None:
+    ordered = sorted(entries, key=_competitive_sort_key)
+    for index, entry in enumerate(ordered, start=1):
+        if entry.abiturient_id == abiturient_id:
+            return index
+    return None
+
+
+def _ensure_user_in_entries(
+    entries: list[ApplicationEntry],
+    user_entry: ApplicationEntry | None,
+) -> list[ApplicationEntry]:
+    if user_entry is None:
+        return list(entries)
+    if any(entry.abiturient_id == user_entry.abiturient_id for entry in entries):
+        return list(entries)
+    return [*entries, user_entry]
+
+
 def _passes_by_cutoff_score(
     user_score: int | None,
     cutoff: int | None,
     user_competitive_position: int | None,
     marginal_competitive_position: int | None,
+    *,
+    seats: int | None = None,
 ) -> bool:
     if user_score is None or cutoff is None:
+        return False
+    # Position and badge must stay consistent: outside seats => does not pass.
+    if (
+        seats is not None
+        and seats > 0
+        and user_competitive_position is not None
+        and user_competitive_position > seats
+    ):
         return False
     if user_score > cutoff:
         return True
@@ -1127,7 +1159,6 @@ def get_user_consent_projection(
             raw_competitive_ids,
             consent_modeling,
         )
-        direction_list = _build_competitive_entries(direction, university, raw_competitive_ids)
         enrolled_ids = enrollment_by_direction.get(direction_key, [])
         enrolled_position = _find_rank(user.abiturient_id, enrolled_ids)
         submission_position = profile.position if profile else None
@@ -1136,6 +1167,11 @@ def get_user_consent_projection(
         cutoff_score = cutoff_by_direction.get(direction.id)
 
         user_score = profile.nsummark if profile else _user_projection_score(user, university)
+        user_entry = (
+            _application_entry_from_profile(profile, direction, university)
+            if profile is not None
+            else None
+        )
         is_admitted_other_direction = (
             not is_admitted
             and enrolled_elsewhere_name is not None
@@ -1143,11 +1179,9 @@ def get_user_consent_projection(
             and university.id == user_consent_university_id
         )
 
-        display_direction_list = _build_competitive_entries(
-            direction,
-            university,
-            competitive_ids,
-        )
+        # Ranking list used both for displayed position and for badge color.
+        ranking_entries = _build_competitive_entries(direction, university, competitive_ids)
+        ranking_entries = _ensure_user_in_entries(ranking_entries, user_entry)
         if is_admitted_other_direction and profile is not None:
             counterfactual_enrolled_ids = _counterfactual_enrolled_ids_for_direction(
                 university.id,
@@ -1156,17 +1190,26 @@ def get_user_consent_projection(
                 enrollment_by_direction,
             )
             counterfactual_enrolled_ids.discard(user.abiturient_id)
-            user_entry = _application_entry_from_profile(profile, direction, university)
-            seats = direction.seats or 0
-            competitive_position, _ = _resolve_counterfactual_competitive_position(
-                user.abiturient_id,
-                user_entry,
-                display_direction_list,
+            ranking_entries = _active_competitive_list(
+                ranking_entries,
                 counterfactual_enrolled_ids,
-                seats,
             )
             is_hypothetical_competitive = True
         else:
+            is_hypothetical_competitive = (
+                profile is not None
+                and user.abiturient_id not in competitive_ids
+                and user_entry is not None
+            )
+
+        competitive_position = (
+            _rank_in_entries(user.abiturient_id, ranking_entries)
+            if user_entry is not None or user.abiturient_id in {
+                entry.abiturient_id for entry in ranking_entries
+            }
+            else None
+        )
+        if competitive_position is None and user_score is not None:
             competitive_position, is_hypothetical_competitive = _resolve_competitive_position(
                 direction,
                 user,
@@ -1177,18 +1220,30 @@ def get_user_consent_projection(
         if is_admitted:
             passes_enrollment = True
         else:
-            marginal_id = _marginal_enrolled_abiturient_id(enrolled_ids, direction_list)
-            user_rank_for_cutoff = _find_rank(user.abiturient_id, raw_competitive_ids)
-            if user_rank_for_cutoff is None:
+            marginal_id = _marginal_enrolled_abiturient_id(enrolled_ids, ranking_entries)
+            if marginal_id is None:
+                # Fall back to raw direction entries if enrolled were filtered out.
+                raw_direction_list = _build_competitive_entries(
+                    direction,
+                    university,
+                    raw_competitive_ids,
+                )
+                marginal_id = _marginal_enrolled_abiturient_id(enrolled_ids, raw_direction_list)
+                marginal_competitive_position = (
+                    _find_rank(marginal_id, raw_competitive_ids) if marginal_id else None
+                )
+                user_rank_for_cutoff = _find_rank(user.abiturient_id, raw_competitive_ids)
+                if user_rank_for_cutoff is None:
+                    user_rank_for_cutoff = competitive_position
+            else:
+                marginal_competitive_position = _rank_in_entries(marginal_id, ranking_entries)
                 user_rank_for_cutoff = competitive_position
-            marginal_competitive_position = (
-                _find_rank(marginal_id, raw_competitive_ids) if marginal_id else None
-            )
             passes_enrollment = _passes_by_cutoff_score(
                 user_score,
                 cutoff_score,
                 user_rank_for_cutoff,
                 marginal_competitive_position,
+                seats=direction.seats,
             )
 
         if is_admitted:
@@ -1366,6 +1421,7 @@ def get_user_hypothetical_consent_projection(
             cutoff_score,
             competitive_position,
             marginal_competitive_position,
+            seats=direction.seats,
         )
 
         results.append(
