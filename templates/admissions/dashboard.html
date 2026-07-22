@@ -7,11 +7,21 @@
     <h1 class="h3 mb-0">Мои позиции</h1>
 </div>
 
-<div class="card shadow-sm mb-4">
-    <div class="card-header bg-primary-custom text-white">
+<div class="analytics-toolbar mb-4">
+    <button type="button" class="btn btn-outline-secondary btn-sm" id="dashboard-expand-all">
+        Развернуть всё
+    </button>
+    <button type="button" class="btn btn-outline-secondary btn-sm" id="dashboard-collapse-all">
+        Свернуть всё
+    </button>
+</div>
+
+<section class="card shadow-sm mb-4 analytics-panel is-collapsed" data-analytics-panel>
+    <button type="button" class="card-header bg-primary-custom text-white analytics-panel__toggle w-100 border-0" aria-expanded="false">
         <h2 class="h5 mb-0">Текущие позиции</h2>
-    </div>
-    <div class="table-responsive">
+        <span class="analytics-panel__chevron" aria-hidden="true"></span>
+    </button>
+    <div class="analytics-panel__body table-responsive">
         <table class="table table-hover dashboard-table mb-0">
             <thead>
                 <tr>
@@ -63,78 +73,87 @@
             </tbody>
         </table>
     </div>
-</div>
+</section>
 
-<div class="card shadow-sm mb-4">
-    <div class="card-header bg-primary-custom text-white">
+<section class="card shadow-sm mb-4 analytics-panel is-collapsed" data-analytics-panel>
+    <button type="button" class="card-header bg-primary-custom text-white analytics-panel__toggle w-100 border-0" aria-expanded="false">
         <h2 class="h5 mb-0">Проходные баллы (моделирование согласий)</h2>
+        <span class="analytics-panel__chevron" aria-hidden="true"></span>
+    </button>
+    <div class="analytics-panel__body">
+        <div class="card-body pb-2">
+            <p class="text-muted small mb-0">
+                Прогноз проходного балла по конкурсным спискам с учётом моделирования подачи согласий.
+                {% if consent_modeling_computed_at %}
+                Рассчитано: {{ consent_modeling_computed_at|date:"d.m.Y H:i" }}.
+                {% endif %}
+            </p>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover dashboard-table mb-0">
+                <thead>
+                    <tr>
+                        <th>Медицинский университет / направление</th>
+                        <th>Мест</th>
+                        <th>Зачислено</th>
+                        <th>Проходной балл</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% regroup cutoff_scores by university_name as university_groups %}
+                    {% for university in university_groups %}
+                    <tr class="dashboard-university-row">
+                        <td colspan="4"><strong>{{ university.grouper }}:</strong></td>
+                    </tr>
+                    {% for row in university.list %}
+                    <tr class="dashboard-direction-row">
+                        <td class="dashboard-direction-cell"><em>{{ row.direction_name }}</em></td>
+                        <td>{% if row.seats is not None %}{{ row.seats }}{% else %}—{% endif %}</td>
+                        <td>{{ row.enrolled_count }}</td>
+                        <td>{% if row.cutoff_score is not None %}{{ row.cutoff_score }}{% else %}—{% endif %}</td>
+                    </tr>
+                    {% endfor %}
+                    {% empty %}
+                    <tr><td colspan="4" class="text-muted">Нет данных. Обновите списки поступающих.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
-    <div class="card-body pb-2">
-        <p class="text-muted small mb-0">
-            Прогноз проходного балла по конкурсным спискам с учётом моделирования подачи согласий.
-            {% if consent_modeling_computed_at %}
-            Рассчитано: {{ consent_modeling_computed_at|date:"d.m.Y H:i" }}.
-            {% endif %}
-        </p>
-    </div>
-    <div class="table-responsive">
-        <table class="table table-hover dashboard-table mb-0">
-            <thead>
-                <tr>
-                    <th>Медицинский университет / направление</th>
-                    <th>Мест</th>
-                    <th>Зачислено</th>
-                    <th>Проходной балл</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% regroup cutoff_scores by university_name as university_groups %}
-                {% for university in university_groups %}
-                <tr class="dashboard-university-row">
-                    <td colspan="4"><strong>{{ university.grouper }}:</strong></td>
-                </tr>
-                {% for row in university.list %}
-                <tr class="dashboard-direction-row">
-                    <td class="dashboard-direction-cell"><em>{{ row.direction_name }}</em></td>
-                    <td>{% if row.seats is not None %}{{ row.seats }}{% else %}—{% endif %}</td>
-                    <td>{{ row.enrolled_count }}</td>
-                    <td>{% if row.cutoff_score is not None %}{{ row.cutoff_score }}{% else %}—{% endif %}</td>
-                </tr>
-                {% endfor %}
-                {% empty %}
-                <tr><td colspan="4" class="text-muted">Нет данных. Обновите списки поступающих.</td></tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-</div>
+</section>
 
-<div class="card shadow-sm mb-4">
-    <div class="card-header bg-accent text-white">
+<section class="card shadow-sm mb-4 analytics-panel" data-analytics-panel>
+    <button type="button" class="card-header bg-accent text-white analytics-panel__toggle w-100 border-0" aria-expanded="true">
         <h2 class="h5 mb-0">Конкурсный список: мой прогноз зачисления</h2>
+        <span class="analytics-panel__chevron" aria-hidden="true"></span>
+    </button>
+    <div class="analytics-panel__body">
+        <div class="card-body pb-2">
+            <p class="text-muted small mb-0">
+                Прогноз по моделированию согласий: в конкурсный список вуза попадают только абитуриенты,
+                которые по модели подают согласие в этот вуз (одно согласие на одного человека).
+                Позиция указана для списка на зачисление, конкурсного списка или исходного списка заявлений.
+            </p>
+        </div>
+        {% include "admissions/partials/consent_projection_table.html" with projection_rows=consent_projection empty_message="Нет поданных заявлений или данных моделирования." %}
     </div>
-    <div class="card-body pb-2">
-        <p class="text-muted small mb-0">
-            Прогноз по моделированию согласий: в конкурсный список вуза попадают только абитуриенты,
-            которые по модели подают согласие в этот вуз (одно согласие на одного человека).
-            Позиция указана для списка на зачисление, конкурсного списка или исходного списка заявлений.
-        </p>
-    </div>
-    {% include "admissions/partials/consent_projection_table.html" with projection_rows=consent_projection empty_message="Нет поданных заявлений или данных моделирования." %}
-</div>
+</section>
 
-<div class="card shadow-sm mb-4">
-    <div class="card-header bg-accent text-white">
+<section class="card shadow-sm mb-4 analytics-panel is-collapsed" data-analytics-panel>
+    <button type="button" class="card-header bg-accent text-white analytics-panel__toggle w-100 border-0" aria-expanded="false">
         <h2 class="h5 mb-0">Прогноз зачисления без поданного заявления</h2>
+        <span class="analytics-panel__chevron" aria-hidden="true"></span>
+    </button>
+    <div class="analytics-panel__body">
+        <div class="card-body pb-2">
+            <p class="text-muted small mb-0">
+                Прогноз по моделированию согласий для вузов, куда заявление не подавалось:
+                позиция в конкурсном списке при ваших баллах и статус «Прогноз».
+            </p>
+        </div>
+        {% include "admissions/partials/consent_projection_table.html" with projection_rows=hypothetical_consent_projection empty_message="Нет направлений вне поданных заявлений или данных моделирования." %}
     </div>
-    <div class="card-body pb-2">
-        <p class="text-muted small mb-0">
-            Прогноз по моделированию согласий для вузов, куда заявление не подавалось:
-            позиция в конкурсном списке при ваших баллах и статус «Прогноз».
-        </p>
-    </div>
-    {% include "admissions/partials/consent_projection_table.html" with projection_rows=hypothetical_consent_projection empty_message="Нет направлений вне поданных заявлений или данных моделирования." %}
-</div>
+</section>
 
 <p class="text-muted text-end mt-3 mb-0 small">
     {% if last_data_update %}
@@ -143,4 +162,47 @@
         Данные ещё не обновлялись
     {% endif %}
 </p>
+
+<script>
+function initDashboardPanels() {
+    const panels = () => Array.from(document.querySelectorAll("[data-analytics-panel]"));
+
+    function setPanelCollapsed(panel, collapsed) {
+        panel.classList.toggle("is-collapsed", collapsed);
+        const toggle = panel.querySelector(".analytics-panel__toggle");
+        if (toggle) {
+            toggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+        }
+    }
+
+    if (!document.body.dataset.analyticsPanelsBound) {
+        document.body.dataset.analyticsPanelsBound = "1";
+        document.addEventListener("click", (event) => {
+            const toggle = event.target.closest(".analytics-panel__toggle");
+            if (!toggle) {
+                return;
+            }
+            const panel = toggle.closest("[data-analytics-panel]");
+            if (!panel) {
+                return;
+            }
+            setPanelCollapsed(panel, !panel.classList.contains("is-collapsed"));
+        });
+    }
+
+    document.getElementById("dashboard-expand-all")?.addEventListener("click", () => {
+        panels().forEach((panel) => setPanelCollapsed(panel, false));
+    });
+
+    document.getElementById("dashboard-collapse-all")?.addEventListener("click", () => {
+        panels().forEach((panel) => setPanelCollapsed(panel, true));
+    });
+}
+
+if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initDashboardPanels);
+} else {
+    initDashboardPanels();
+}
+</script>
 {% endblock %}

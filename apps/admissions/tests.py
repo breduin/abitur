@@ -30,6 +30,8 @@ from apps.admissions.services.applicant_overlap_service import (
     NOT_ENROLLED_LABEL,
     build_appearance_index,
     build_enrollment_labels_by_abiturient,
+    build_overlap_context,
+    compute_overlap_stats,
     get_applicant_overlap_rows,
     get_user_applied_directions,
 )
@@ -1428,6 +1430,7 @@ class ApplicantOverlapServiceTests(TestCase):
             sstatus_ssp="Участвует",
             nsummark=300,
             npriority_ssp=1,
+            has_enrollment_consent=True,
         )
         ApplicantProfile.objects.create(
             direction=self.msk_direction,
@@ -1444,6 +1447,7 @@ class ApplicantOverlapServiceTests(TestCase):
             sstatus_ssp="Участвует",
             nsummark=290,
             npriority_ssp=1,
+            has_enrollment_consent=False,
         )
 
     def test_get_user_applied_directions(self):
@@ -1470,6 +1474,11 @@ class ApplicantOverlapServiceTests(TestCase):
         self.assertEqual(rows[1].position, 2)
         self.assertEqual(rows[1].nsummark, 290)
         self.assertEqual(rows[1].other_applications, "Только в выбранном списке")
+
+    def test_overlap_rows_include_consent(self):
+        rows = get_applicant_overlap_rows(self.spb_direction.id, limit=10)
+        self.assertTrue(rows[0].has_enrollment_consent)
+        self.assertFalse(rows[1].has_enrollment_consent)
 
     def test_overlap_rows_include_modeling_result(self):
         index = build_appearance_index()
@@ -1499,6 +1508,63 @@ class ApplicantOverlapServiceTests(TestCase):
         )
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0].abiturient_id, "A200")
+
+    def test_overlap_stats_city_and_university_categories(self):
+        index = build_appearance_index()
+        rows = get_applicant_overlap_rows(
+            self.spb_direction.id,
+            limit=10,
+            appearance_index=index,
+        )
+        stats = compute_overlap_stats(
+            rows,
+            selected_university_id=self.spb_uni.id,
+            appearance_index=index,
+        )
+        self.assertEqual(stats["total"], 2)
+        self.assertEqual(stats["only_this_university"]["count"], 1)
+        self.assertEqual(stats["only_this_university"]["percent"], 50.0)
+        self.assertEqual(stats["only_spb"]["count"], 1)
+        self.assertEqual(stats["only_spb"]["percent"], 50.0)
+        self.assertEqual(stats["spb_and_msk"]["count"], 1)
+        self.assertEqual(stats["spb_and_msk"]["percent"], 50.0)
+
+    def test_overlap_stats_respect_enrolled_only_and_limit(self):
+        index = build_appearance_index()
+        consent_modeling = {
+            "enrollment_by_direction": {
+                str(self.spb_direction.id): ["A100", "A200"],
+            }
+        }
+        rows = get_applicant_overlap_rows(
+            self.spb_direction.id,
+            limit=1,
+            appearance_index=index,
+            consent_modeling=consent_modeling,
+            enrolled_only=True,
+        )
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].abiturient_id, "A100")
+        stats = compute_overlap_stats(
+            rows,
+            selected_university_id=self.spb_uni.id,
+            appearance_index=index,
+        )
+        self.assertEqual(stats["total"], 1)
+        self.assertEqual(stats["only_this_university"]["count"], 0)
+        self.assertEqual(stats["only_spb"]["count"], 0)
+        self.assertEqual(stats["spb_and_msk"]["count"], 1)
+        self.assertEqual(stats["spb_and_msk"]["percent"], 100.0)
+
+    def test_build_overlap_context_includes_stats(self):
+        context = build_overlap_context(
+            self.user,
+            direction_id=self.spb_direction.id,
+            limit=10,
+        )
+        self.assertEqual(context["overlap_stats"]["total"], 2)
+        self.assertIn("only_this_university", context["overlap_stats"])
+        self.assertEqual(len(context["overlap_rows"]), 2)
 
     def test_build_enrollment_labels_from_consent_modeling(self):
         consent_modeling = {
