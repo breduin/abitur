@@ -67,21 +67,35 @@
         <p class="small text-muted mb-2">
             Статистика по выведенному списку ({{ overlap_stats.total }} чел.):
         </p>
+        <p class="small mb-2">
+            Есть согласие:
+            <strong>{{ overlap_stats.with_consent.count }}</strong>
+            ({{ overlap_stats.with_consent.percent }}%)
+        </p>
         <ul class="small mb-0 ps-3">
             <li>
                 Только в данный МУ:
                 <strong>{{ overlap_stats.only_this_university.count }}</strong>
-                ({{ overlap_stats.only_this_university.percent }}%)
+                ({{ overlap_stats.only_this_university.percent }}%),
+                согласия:
+                <strong>{{ overlap_stats.only_this_university.with_consent.count }}</strong>
+                ({{ overlap_stats.only_this_university.with_consent.percent }}%)
             </li>
             <li>
                 Только в МУ из СПб:
                 <strong>{{ overlap_stats.only_spb.count }}</strong>
-                ({{ overlap_stats.only_spb.percent }}%)
+                ({{ overlap_stats.only_spb.percent }}%),
+                согласия:
+                <strong>{{ overlap_stats.only_spb.with_consent.count }}</strong>
+                ({{ overlap_stats.only_spb.with_consent.percent }}%)
             </li>
             <li>
                 В МУ СПб и МУ Москвы:
                 <strong>{{ overlap_stats.spb_and_msk.count }}</strong>
-                ({{ overlap_stats.spb_and_msk.percent }}%)
+                ({{ overlap_stats.spb_and_msk.percent }}%),
+                согласия:
+                <strong>{{ overlap_stats.spb_and_msk.with_consent.count }}</strong>
+                ({{ overlap_stats.spb_and_msk.with_consent.percent }}%)
             </li>
         </ul>
     </div>

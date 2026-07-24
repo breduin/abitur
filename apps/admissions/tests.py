@@ -211,6 +211,119 @@ class SyncServiceTests(TestCase):
         job = SyncJob.objects.get(direction=self.direction)
         self.assertEqual(job.records_fetched, 30)
 
+    @patch("apps.admissions.services.sync_service.get_university_client")
+    def test_sync_deletes_profiles_missing_from_fetch(self, mock_get_client):
+        self.university.api_config = {
+            "provider": "gpmu",
+            "base_url": "https://example.com",
+        }
+        self.university.save(update_fields=["api_config"])
+
+        ApplicantProfile.objects.create(
+            direction=self.direction,
+            abiturient_id="KEEP",
+            position=1,
+            sstatus_ssp="Участвует",
+            nsummark=300,
+            npriority_ssp=1,
+        )
+        ApplicantProfile.objects.create(
+            direction=self.direction,
+            abiturient_id="STALE",
+            position=2,
+            sstatus_ssp="Участвует",
+            nsummark=290,
+            npriority_ssp=1,
+        )
+
+        mock_client = mock_get_client.return_value
+        mock_client.fetch_all_above_threshold.return_value = iter(
+            [
+                {
+                    "Уникальный код": "KEEP",
+                    "Сумма конкурсных баллов": "301",
+                    "Приоритет": "1",
+                    "Состояние договора": "",
+                    "_position": 1,
+                }
+            ]
+        )
+        mock_client.last_seats = None
+
+        result = sync_direction(self.direction.id, force=True, check_interval=False)
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(result["records"], 1)
+        self.assertEqual(result["deleted"], 1)
+        self.assertTrue(
+            ApplicantProfile.objects.filter(
+                direction=self.direction, abiturient_id="KEEP"
+            ).exists()
+        )
+        self.assertFalse(
+            ApplicantProfile.objects.filter(
+                direction=self.direction, abiturient_id="STALE"
+            ).exists()
+        )
+        kept = ApplicantProfile.objects.get(
+            direction=self.direction, abiturient_id="KEEP"
+        )
+        self.assertEqual(kept.nsummark, 301)
+
+    @patch("apps.admissions.services.sync_service.get_university_client")
+    def test_sync_does_not_delete_on_error(self, mock_get_client):
+        self.university.api_config = {
+            "provider": "gpmu",
+            "base_url": "https://example.com",
+        }
+        self.university.save(update_fields=["api_config"])
+
+        ApplicantProfile.objects.create(
+            direction=self.direction,
+            abiturient_id="KEEP",
+            position=1,
+            sstatus_ssp="Участвует",
+            nsummark=300,
+            npriority_ssp=1,
+        )
+        ApplicantProfile.objects.create(
+            direction=self.direction,
+            abiturient_id="STALE",
+            position=2,
+            sstatus_ssp="Участвует",
+            nsummark=290,
+            npriority_ssp=1,
+        )
+
+        def partial_then_error(*_args, **_kwargs):
+            yield {
+                "Уникальный код": "KEEP",
+                "Сумма конкурсных баллов": "301",
+                "Приоритет": "1",
+                "Состояние договора": "",
+                "_position": 1,
+            }
+            raise UniversityAPIError("API broken")
+
+        mock_client = mock_get_client.return_value
+        mock_client.fetch_all_above_threshold.side_effect = partial_then_error
+        mock_client.last_seats = None
+
+        result = sync_direction(self.direction.id, force=True, check_interval=False)
+        self.assertEqual(result["status"], "error")
+        self.assertEqual(
+            ApplicantProfile.objects.filter(direction=self.direction).count(),
+            2,
+        )
+        self.assertTrue(
+            ApplicantProfile.objects.filter(
+                direction=self.direction, abiturient_id="STALE"
+            ).exists()
+        )
+        kept = ApplicantProfile.objects.get(
+            direction=self.direction, abiturient_id="KEEP"
+        )
+        self.assertEqual(kept.nsummark, 301)
+
     def test_mark_force_sync_started_resets_jobs(self):
         job = SyncJob.objects.create(
             direction=self.direction,
@@ -1522,12 +1635,20 @@ class ApplicantOverlapServiceTests(TestCase):
             appearance_index=index,
         )
         self.assertEqual(stats["total"], 2)
+        self.assertEqual(stats["with_consent"]["count"], 1)
+        self.assertEqual(stats["with_consent"]["percent"], 50.0)
         self.assertEqual(stats["only_this_university"]["count"], 1)
         self.assertEqual(stats["only_this_university"]["percent"], 50.0)
+        self.assertEqual(stats["only_this_university"]["with_consent"]["count"], 0)
+        self.assertEqual(stats["only_this_university"]["with_consent"]["percent"], 0.0)
         self.assertEqual(stats["only_spb"]["count"], 1)
         self.assertEqual(stats["only_spb"]["percent"], 50.0)
+        self.assertEqual(stats["only_spb"]["with_consent"]["count"], 0)
+        self.assertEqual(stats["only_spb"]["with_consent"]["percent"], 0.0)
         self.assertEqual(stats["spb_and_msk"]["count"], 1)
         self.assertEqual(stats["spb_and_msk"]["percent"], 50.0)
+        self.assertEqual(stats["spb_and_msk"]["with_consent"]["count"], 1)
+        self.assertEqual(stats["spb_and_msk"]["with_consent"]["percent"], 100.0)
 
     def test_overlap_stats_respect_enrolled_only_and_limit(self):
         index = build_appearance_index()
@@ -1551,10 +1672,15 @@ class ApplicantOverlapServiceTests(TestCase):
             appearance_index=index,
         )
         self.assertEqual(stats["total"], 1)
+        self.assertEqual(stats["with_consent"]["count"], 1)
+        self.assertEqual(stats["with_consent"]["percent"], 100.0)
         self.assertEqual(stats["only_this_university"]["count"], 0)
+        self.assertEqual(stats["only_this_university"]["with_consent"]["count"], 0)
         self.assertEqual(stats["only_spb"]["count"], 0)
         self.assertEqual(stats["spb_and_msk"]["count"], 1)
         self.assertEqual(stats["spb_and_msk"]["percent"], 100.0)
+        self.assertEqual(stats["spb_and_msk"]["with_consent"]["count"], 1)
+        self.assertEqual(stats["spb_and_msk"]["with_consent"]["percent"], 100.0)
 
     def test_build_overlap_context_includes_stats(self):
         context = build_overlap_context(
@@ -1564,6 +1690,8 @@ class ApplicantOverlapServiceTests(TestCase):
         )
         self.assertEqual(context["overlap_stats"]["total"], 2)
         self.assertIn("only_this_university", context["overlap_stats"])
+        self.assertIn("with_consent", context["overlap_stats"])
+        self.assertEqual(context["overlap_stats"]["with_consent"]["count"], 1)
         self.assertEqual(len(context["overlap_rows"]), 2)
 
     def test_build_enrollment_labels_from_consent_modeling(self):

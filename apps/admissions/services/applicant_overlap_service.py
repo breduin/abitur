@@ -37,13 +37,25 @@ def _percent(count: int, total: int) -> float:
     return round(count * 100 / total, 1)
 
 
+def _category_stat(count: int, total: int, consent_count: int) -> dict[str, Any]:
+    return {
+        "count": count,
+        "percent": _percent(count, total),
+        "with_consent": OverlapStat(
+            count=consent_count,
+            percent=_percent(consent_count, count),
+        ).as_dict(),
+    }
+
+
 def empty_overlap_stats() -> dict[str, Any]:
-    zero = OverlapStat(count=0, percent=0.0).as_dict()
+    zero_category = _category_stat(0, 0, 0)
     return {
         "total": 0,
-        "only_this_university": zero,
-        "only_spb": zero,
-        "spb_and_msk": zero,
+        "with_consent": OverlapStat(count=0, percent=0.0).as_dict(),
+        "only_this_university": zero_category,
+        "only_spb": zero_category,
+        "spb_and_msk": zero_category,
     }
 
 
@@ -138,39 +150,50 @@ def compute_overlap_stats(
     if total == 0:
         return empty_overlap_stats()
 
+    with_consent = 0
     only_this_university = 0
+    only_this_university_consent = 0
     only_spb = 0
+    only_spb_consent = 0
     spb_and_msk = 0
+    spb_and_msk_consent = 0
 
     for row in rows:
         appearances = appearance_index.get(row.abiturient_id, [])
         university_ids = {entry[3] for entry in appearances}
         cities = {entry[4] for entry in appearances if entry[4]}
+        has_consent = row.has_enrollment_consent
+
+        if has_consent:
+            with_consent += 1
 
         if university_ids == {selected_university_id}:
             only_this_university += 1
+            if has_consent:
+                only_this_university_consent += 1
 
         has_spb = MedicalUniversity.City.SPB in cities
         has_msk = MedicalUniversity.City.MSK in cities
         if has_spb and not has_msk:
             only_spb += 1
+            if has_consent:
+                only_spb_consent += 1
         if has_spb and has_msk:
             spb_and_msk += 1
+            if has_consent:
+                spb_and_msk_consent += 1
 
     return {
         "total": total,
-        "only_this_university": OverlapStat(
-            count=only_this_university,
-            percent=_percent(only_this_university, total),
+        "with_consent": OverlapStat(
+            count=with_consent,
+            percent=_percent(with_consent, total),
         ).as_dict(),
-        "only_spb": OverlapStat(
-            count=only_spb,
-            percent=_percent(only_spb, total),
-        ).as_dict(),
-        "spb_and_msk": OverlapStat(
-            count=spb_and_msk,
-            percent=_percent(spb_and_msk, total),
-        ).as_dict(),
+        "only_this_university": _category_stat(
+            only_this_university, total, only_this_university_consent
+        ),
+        "only_spb": _category_stat(only_spb, total, only_spb_consent),
+        "spb_and_msk": _category_stat(spb_and_msk, total, spb_and_msk_consent),
     }
 
 

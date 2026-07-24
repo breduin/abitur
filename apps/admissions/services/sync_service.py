@@ -94,6 +94,7 @@ def sync_direction(
     provider = university.api_config.get("provider", "1spbgmu")
     client = get_university_client(university.api_config)
     records = 0
+    seen_ids: set[str] = set()
 
     try:
         if provider == "1spbgmu":
@@ -118,9 +119,16 @@ def sync_direction(
                     "raw_data": parsed.raw_data,
                 },
             )
+            seen_ids.add(parsed.abiturient_id)
             records += 1
             if records % PROGRESS_FLUSH_EVERY == 0:
                 _flush_sync_progress(job, records)
+
+        deleted, _ = (
+            ApplicantProfile.objects.filter(direction=direction)
+            .exclude(abiturient_id__in=seen_ids)
+            .delete()
+        )
 
         if client.last_seats is not None:
             direction.seats = client.last_seats
@@ -137,7 +145,7 @@ def sync_direction(
         job.next_retry_at = None
         job.save(update_fields=["status", "records_fetched", "next_retry_at", "updated_at"])
 
-        return {"status": "success", "records": records}
+        return {"status": "success", "records": records, "deleted": deleted}
 
     except RateLimitError as exc:
         retry_after = exc.retry_after or 3600
