@@ -837,6 +837,33 @@ class AlmazovClientTests(SimpleTestCase):
         self.assertEqual(rows[0]["Уникальный код"], "1043997")
         self.assertEqual(rows[1]["Уникальный код"], "1508409")
 
+    @patch("apps.admissions.clients.almazov_client.AlmazovClient.fetch_list_html")
+    def test_fetch_skips_low_score_hole_after_bvi(self, mock_html):
+        """Отозванная строка с низким баллом без БВИ не должна резать основной конкурс."""
+        mock_html.return_value = """
+        <p class='number-places'>Всего мест: 162</p>
+        <table id='table-list'>
+        <tr class='original'><th>№</th><th>Уникальный код</th><th>Приоритет</th><th>БВИ </th>
+        <th>Сумма баллов</th><th>Текущий статус конкурса</th><th>Согласие на зачисление</th></tr>
+        <tr class='copy'><td>1</td><td>1043997</td><td>1</td><td>✓</td><td>10</td>
+        <td>Участвует в конкурсе</td><td></td></tr>
+        <tr class='copy'><td>2</td><td>2215856</td><td>1</td><td></td><td>10</td>
+        <td>Отозвано</td><td></td></tr>
+        <tr class='copy'><td>3</td><td>1508409</td><td>1</td><td></td><td>310</td>
+        <td>Участвует в конкурсе</td><td></td></tr>
+        <tr class='copy'><td>4</td><td>1508410</td><td>1</td><td></td><td>305</td>
+        <td>Участвует в конкурсе</td><td></td></tr>
+        <tr class='copy'><td>5</td><td>1183513</td><td>1</td><td></td><td>199</td>
+        <td>На рассмотрении</td><td></td></tr>
+        </table>
+        """
+        client = AlmazovClient({"base_url": "https://abit.almazovcentre.ru"})
+        rows = list(client.fetch_all_above_threshold({}, min_score=200))
+        ids = [row["Уникальный код"] for row in rows]
+        self.assertEqual(ids, ["1043997", "1508409", "1508410"])
+        self.assertEqual(rows[1]["_position"], 3)
+        self.assertEqual(rows[2]["_position"], 4)
+
     def test_from_almazov_row_treats_bvi_as_zero_score(self):
         row = {
             "Уникальный код": "1043997",

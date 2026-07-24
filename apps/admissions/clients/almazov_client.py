@@ -55,9 +55,17 @@ class AlmazovClient(BaseHTTPClient):
         self.last_seats = parse_seats(html)
         headers, rows = parse_table(html)
 
+        # У Алмазова после БВИ бывают «дыры»: отозванные/битые строки с низким
+        # баллом без галки БВИ. Их нельзя считать концом списка — иначе отрежется
+        # весь основной конкурс. Стоп только после первого балла >= min_score.
+        seen_qualifying_score = False
         for position, row in enumerate(rows_to_dicts(headers, rows), start=1):
             score = parse_almazov_competition_score(row)
+            if score is not None and score >= min_score:
+                seen_qualifying_score = True
             if self._should_stop_at_score(score, min_score):
-                break
+                if seen_qualifying_score:
+                    break
+                continue
             row["_position"] = position
             yield row
