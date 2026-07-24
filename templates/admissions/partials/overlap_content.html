@@ -103,7 +103,7 @@
             </div>
             {% if overlap_score_distribution and overlap_score_distribution.total %}
             <div class="analytics-overlap-histogram">
-                <p class="small text-muted mb-2">
+                <p class="small text-muted mb-1">
                     Распределение баллов
                     {% if overlap_score_distribution.cutoff_score %}
                         (от проходного {{ overlap_score_distribution.cutoff_score }})
@@ -113,7 +113,7 @@
                     <canvas id="overlap-score-chart" aria-label="Гистограмма баллов"></canvas>
                 </div>
                 {% if overlap_score_distribution.mode_label %}
-                <p class="small mb-0 mt-2">
+                <p class="small mb-0 mt-1">
                     Самый частый балл:
                     <strong>{{ overlap_score_distribution.mode_label }}</strong>
                     ({{ overlap_score_distribution.mode_count }} чел.)

@@ -387,7 +387,7 @@ body {
 .analytics-overlap-stats-layout {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 1.25rem;
+    gap: 1rem;
     align-items: stretch;
 }
 
@@ -396,9 +396,28 @@ body {
     min-width: 0;
 }
 
+.analytics-overlap-histogram {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+
 .analytics-overlap-histogram__chart {
     position: relative;
-    height: 11.5rem;
+    flex: 1 1 0;
+    min-height: 0;
+    height: 0;
+    width: 100%;
+    overflow: hidden;
+}
+
+.analytics-overlap-histogram__chart canvas {
+    display: block;
+    width: 100% !important;
+    height: 100% !important;
+    max-width: 100%;
+    max-height: 100%;
 }
 
 @media (max-width: 767.98px) {
@@ -408,5 +427,11 @@ body {
 
     .analytics-overlap-stats-layout {
         grid-template-columns: 1fr;
+    }
+
+    .analytics-overlap-histogram__chart {
+        flex: 0 0 auto;
+        height: 8rem;
+        min-height: 8rem;
     }
 }
