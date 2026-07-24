@@ -1869,11 +1869,17 @@ class ApplicantOverlapServiceTests(TestCase):
         self.assertEqual(distribution["olympiad_count"], 2)
         self.assertEqual(distribution["labels"][-1], "Олимп.")
         self.assertEqual(distribution["counts"][-1], 2)
-        self.assertEqual(distribution["labels"][0], "301–305")
-        self.assertEqual(distribution["labels"][1], "306–310")
-        self.assertEqual(distribution["counts"][0], 1)
-        self.assertEqual(distribution["counts"][1], 2)
-        self.assertNotIn("286–290", distribution["labels"])
+        self.assertEqual(distribution["labels"][0], "301")
+        self.assertEqual(distribution["labels"][-2], "308")
+        self.assertEqual(
+            distribution["labels"][:-1],
+            [str(score) for score in range(301, 309)],
+        )
+        self.assertEqual(distribution["counts"][distribution["labels"].index("303")], 1)
+        self.assertEqual(distribution["counts"][distribution["labels"].index("307")], 1)
+        self.assertEqual(distribution["counts"][distribution["labels"].index("308")], 1)
+        self.assertEqual(distribution["counts"][distribution["labels"].index("301")], 0)
+        self.assertNotIn("290", distribution["labels"])
         self.assertEqual(distribution["mode_score"], 0)
         self.assertEqual(distribution["mode_label"], "Олимп.")
         self.assertEqual(distribution["mode_count"], 2)

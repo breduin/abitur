@@ -7,7 +7,6 @@ from apps.universities.models import MedicalUniversity, StudyDirection
 
 NOT_ENROLLED_LABEL = "Не зачислен по модели"
 NO_MODELING_LABEL = "Моделирование не рассчитано"
-SCORE_BIN_SIZE = 5
 OLYMPIAD_BIN_LABEL = "Олимп."
 
 # appearance index entry: (university_name, direction_name, direction_id, university_id, city)
@@ -76,18 +75,6 @@ def empty_score_distribution() -> dict[str, Any]:
     }
 
 
-def _score_bin_high(score: int) -> int:
-    """Верхняя граница 5-балльного интервала вида 301–305, 306–310."""
-    if score <= 0:
-        return SCORE_BIN_SIZE
-    return ((score + SCORE_BIN_SIZE - 1) // SCORE_BIN_SIZE) * SCORE_BIN_SIZE
-
-
-def _score_bin_label(high: int) -> str:
-    low = high - SCORE_BIN_SIZE + 1
-    return f"{low}–{high}"
-
-
 def _cutoff_score_for_direction(
     consent_modeling: dict[str, Any] | None,
     direction_id: int,
@@ -113,7 +100,7 @@ def compute_score_distribution(
     *,
     cutoff_score: int | None = None,
 ) -> dict[str, Any]:
-    """Гистограмма баллов: слева от проходного, справа олимпиадники."""
+    """Гистограмма баллов: слева от проходного по каждому баллу, справа олимпиадники."""
     if not rows:
         return empty_score_distribution()
 
@@ -140,23 +127,19 @@ def compute_score_distribution(
 
     bins: list[dict[str, Any]] = []
     if regular_scores:
-        max_high = _score_bin_high(max(regular_scores))
-        min_high = _score_bin_high(floor if floor is not None else min(regular_scores))
-        bin_counts: dict[int, int] = defaultdict(int)
-        for score in regular_scores:
-            bin_counts[_score_bin_high(score)] += 1
-        high = min_high
-        while high <= max_high:
+        score_counts = Counter(regular_scores)
+        min_score = floor if floor is not None else min(regular_scores)
+        max_score = max(regular_scores)
+        for score in range(min_score, max_score + 1):
             bins.append(
                 {
-                    "label": _score_bin_label(high),
-                    "low": high - SCORE_BIN_SIZE + 1,
-                    "high": high,
-                    "count": bin_counts.get(high, 0),
+                    "label": str(score),
+                    "low": score,
+                    "high": score,
+                    "count": score_counts.get(score, 0),
                     "is_olympiad": False,
                 }
             )
-            high += SCORE_BIN_SIZE
 
     bins.append(
         {
