@@ -20,6 +20,7 @@ TABLE_RE = re.compile(
 SEATS_RE = re.compile(r"Всего мест:\s*(\d+)", re.IGNORECASE)
 BVI_MARKER = "имеющие право на прием без вступительных испытаний"
 MAIN_MARKER = "не имеющие право на прием без вступительных испытаний"
+BVI_FLAG_HEADER = "Право БВИ заявлено"
 
 
 def _clean_cell(value: str) -> str:
@@ -103,12 +104,12 @@ def _extract_concourse_section(program_html: str, concourse_title: str) -> str:
     )
 
 
-def _split_tables(concourse_html: str) -> tuple[str | None, str | None]:
+def _split_legacy_tables(concourse_html: str) -> tuple[str | None, str | None] | None:
+    """Старый формат: две таблицы с заголовками h5 про БВИ / основную."""
     bvi_pos = concourse_html.lower().find(BVI_MARKER)
     main_pos = concourse_html.lower().find(MAIN_MARKER)
-
     if main_pos == -1:
-        raise UniversityAPIError("Основная таблица МГУ не найдена")
+        return None
 
     bvi_html = concourse_html[bvi_pos:main_pos] if bvi_pos != -1 else None
     main_html = concourse_html[main_pos:]
@@ -129,6 +130,29 @@ def _parse_table_in_block(block_html: str | None) -> list[dict[str, str]]:
     return _rows_to_dicts(headers, rows)
 
 
+def _is_bvi_flag(value: str) -> bool:
+    return value.strip().lower() == "да"
+
+
+def _split_rows_by_bvi_flag(
+    rows: list[dict[str, str]],
+) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+    """Новый формат: одна таблица с колонкой «Право БВИ заявлено»."""
+    if not rows:
+        return [], []
+    if BVI_FLAG_HEADER not in rows[0]:
+        return [], rows
+
+    bvi_rows: list[dict[str, str]] = []
+    main_rows: list[dict[str, str]] = []
+    for row in rows:
+        if _is_bvi_flag(row.get(BVI_FLAG_HEADER, "")):
+            bvi_rows.append(row)
+        else:
+            main_rows.append(row)
+    return bvi_rows, main_rows
+
+
 def parse_concourse_section(
     html: str,
     *,
@@ -141,9 +165,15 @@ def parse_concourse_section(
     seats_match = SEATS_RE.search(concourse_html)
     seats = int(seats_match.group(1)) if seats_match else None
 
-    bvi_html, main_html = _split_tables(concourse_html)
-    bvi_rows = _parse_table_in_block(bvi_html)
-    main_rows = _parse_table_in_block(main_html)
+    legacy = _split_legacy_tables(concourse_html)
+    if legacy is not None:
+        bvi_html, main_html = legacy
+        bvi_rows = _parse_table_in_block(bvi_html)
+        main_rows = _parse_table_in_block(main_html)
+    else:
+        bvi_rows, main_rows = _split_rows_by_bvi_flag(
+            _parse_table_in_block(concourse_html)
+        )
 
     if not bvi_rows and not main_rows:
         raise UniversityAPIError("Строки абитуриентов не найдены в ответе МГУ")

@@ -1260,6 +1260,48 @@ class CPKMSUClientTests(SimpleTestCase):
         self.assertEqual(parsed.nsummark, 0)
         self.assertTrue(parsed.has_enrollment_consent)
 
+    def test_parse_unified_table_splits_by_bvi_flag(self):
+        html = """
+        <h4 class="submitted-section-title">Образовательная программа: Лечебное дело</h4>
+        <div class="submitted-concourse">
+        <h4 class="submitted-concourse-title">Основные места в рамках КЦП</h4>
+        <div>Всего мест: 46.</div>
+        <table class="submitted-table">
+        <thead>
+        <tr><th>№</th><th>ID абитуриента</th><th>Приоритет</th>
+        <th>Право БВИ заявлено</th>
+        <th>Сумма конкурсных баллов</th><th>Сумма баллов за ВИ</th><th>ИД</th>
+        <th colspan="4">Баллы за вступительные испытания</th>
+        <th>Наличие согласия на зачисление в МГУ</th><th>Статус заявления</th></tr>
+        <tr><th></th><th></th><th></th><th></th><th></th><th></th><th></th>
+        <th>Химия ДВИ</th><th>Химия</th><th>Биология</th><th>Русский язык</th>
+        <th></th><th></th></tr>
+        </thead>
+        <tbody>
+        <tr><td>1</td><td>1654233</td><td>1</td><td>Да</td><td>281</td><td>281</td><td>0</td>
+        <td></td><td>97</td><td>95</td><td>89</td>
+        <td>Да</td><td>На рассмотрении</td></tr>
+        <tr><td>2</td><td>1187789</td><td>1</td><td>Нет</td><td>298</td><td>298</td><td>0</td>
+        <td></td><td>100</td><td>98</td><td>100</td>
+        <td>Нет</td><td>На рассмотрении</td></tr>
+        <tr><td>3</td><td>1000003</td><td>1</td><td>Нет</td><td>199</td><td>199</td><td>0</td>
+        <td></td><td>100</td><td>99</td><td>0</td>
+        <td>Нет</td><td>На рассмотрении</td></tr>
+        </tbody>
+        </table>
+        </div>
+        """
+        seats, bvi_rows, main_rows = parse_concourse_section(
+            html,
+            program_name="Лечебное дело",
+            concourse_title="Основные места в рамках КЦП",
+        )
+        self.assertEqual(seats, 46)
+        self.assertEqual(len(bvi_rows), 1)
+        self.assertEqual(bvi_rows[0]["ID абитуриента"], "1654233")
+        self.assertEqual(len(main_rows), 2)
+        self.assertEqual(main_rows[0]["ID абитуриента"], "1187789")
+
     @patch("apps.admissions.clients.cpk_msu_client.CPKMSUClient.fetch_list_html")
     def test_fetch_includes_bvi_before_main_and_stops_at_threshold(self, mock_html):
         bvi_table = """
@@ -1317,6 +1359,51 @@ class CPKMSUClientTests(SimpleTestCase):
         self.assertEqual(rows[0]["ID абитуриента"], "1000001")
         self.assertTrue(rows[0]["_is_bvi"])
         self.assertEqual(rows[1]["ID абитуриента"], "1000002")
+        self.assertEqual(client.last_seats, 46)
+
+    @patch("apps.admissions.clients.cpk_msu_client.CPKMSUClient.fetch_list_html")
+    def test_fetch_unified_table_bvi_before_main(self, mock_html):
+        mock_html.return_value = """
+        <h4 class="submitted-section-title">Образовательная программа: Лечебное дело</h4>
+        <div class="submitted-concourse">
+        <h4 class="submitted-concourse-title">Основные места в рамках КЦП</h4>
+        <div>Всего мест: 46.</div>
+        <table class="submitted-table">
+        <thead>
+        <tr><th>№</th><th>ID абитуриента</th><th>Приоритет</th>
+        <th>Право БВИ заявлено</th>
+        <th>Сумма конкурсных баллов</th><th>ИД</th>
+        <th colspan="2">Баллы за вступительные испытания</th>
+        <th>Наличие согласия на зачисление в МГУ</th><th>Статус заявления</th></tr>
+        <tr><th></th><th></th><th></th><th></th><th></th><th></th>
+        <th>Химия</th><th>Биология</th><th></th><th></th></tr>
+        </thead>
+        <tbody>
+        <tr><td>1</td><td>1000001</td><td>1</td><td>Да</td><td>281</td><td>0</td>
+        <td>97</td><td>95</td><td>Да</td><td>На рассмотрении</td></tr>
+        <tr><td>2</td><td>1000002</td><td>1</td><td>Нет</td><td>250</td><td>0</td>
+        <td>100</td><td>100</td><td>Нет</td><td>На рассмотрении</td></tr>
+        <tr><td>3</td><td>1000003</td><td>1</td><td>Нет</td><td>199</td><td>0</td>
+        <td>100</td><td>99</td><td>Нет</td><td>На рассмотрении</td></tr>
+        </tbody>
+        </table>
+        </div>
+        """
+        client = CPKMSUClient({"base_url": "https://cpk.msu.ru"})
+        rows = list(
+            client.fetch_all_above_threshold(
+                {
+                    "list_path": "/submitted/bachelor/dep_10",
+                    "program_name": "Лечебное дело",
+                },
+                min_score=200,
+            )
+        )
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0]["ID абитуриента"], "1000001")
+        self.assertTrue(rows[0]["_is_bvi"])
+        self.assertEqual(rows[1]["ID абитуриента"], "1000002")
+        self.assertFalse(rows[1].get("_is_bvi"))
         self.assertEqual(client.last_seats, 46)
 
 
