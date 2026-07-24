@@ -214,7 +214,7 @@
 
 <section class="card shadow-sm mb-4 analytics-panel is-collapsed" data-analytics-panel>
     <button type="button" class="card-header bg-primary-custom text-white analytics-panel__toggle w-100 border-0" aria-expanded="false">
-        <h2 class="h5 mb-0">Пересечение списков поступающих</h2>
+        <h2 class="h5 mb-0">Конкурсные списки</h2>
         <span class="analytics-panel__chevron" aria-hidden="true"></span>
     </button>
     <div class="analytics-panel__body">
@@ -226,6 +226,8 @@
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 <script>
+let overlapScoreChart = null;
+
 function initAnalyticsPage() {
     const panels = () => Array.from(document.querySelectorAll("[data-analytics-panel]"));
 
@@ -234,6 +236,9 @@ function initAnalyticsPage() {
         const toggle = panel.querySelector(".analytics-panel__toggle");
         if (toggle) {
             toggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+        }
+        if (!collapsed && overlapScoreChart) {
+            requestAnimationFrame(() => overlapScoreChart.resize());
         }
     }
 
@@ -259,6 +264,8 @@ function initAnalyticsPage() {
     document.getElementById("analytics-collapse-all")?.addEventListener("click", () => {
         panels().forEach((panel) => setPanelCollapsed(panel, true));
     });
+
+    initOverlapScoreChart();
 
     const chartDataEl = document.getElementById("analytics-chart-data");
     if (!chartDataEl || typeof Chart === "undefined") {
@@ -441,11 +448,145 @@ function initAnalyticsPage() {
     }
 }
 
+function initOverlapScoreChart() {
+    const canvas = document.getElementById("overlap-score-chart");
+    const dataEl = document.getElementById("overlap-score-distribution");
+    if (!canvas || !dataEl || typeof Chart === "undefined") {
+        return;
+    }
+
+    let distribution;
+    try {
+        distribution = JSON.parse(dataEl.textContent);
+    } catch (error) {
+        console.error("Не удалось разобрать распределение баллов", error);
+        return;
+    }
+
+    const labels = distribution.labels || [];
+    const counts = distribution.counts || [];
+    if (!labels.length) {
+        return;
+    }
+
+    const barColors = labels.map((label, index) => {
+        if (index === labels.length - 1 && label === "Олимп.") {
+            return "#FF6B9D";
+        }
+        return "rgba(77, 166, 255, 0.78)";
+    });
+
+    let modeIndex = labels.findIndex((label) => label === distribution.mode_label);
+    if (modeIndex < 0 && distribution.mode_score != null) {
+        modeIndex = (distribution.bins || []).findIndex((bin) => (
+            bin
+            && !bin.is_olympiad
+            && bin.low <= distribution.mode_score
+            && distribution.mode_score <= bin.high
+        ));
+    }
+
+    if (overlapScoreChart) {
+        overlapScoreChart.destroy();
+        overlapScoreChart = null;
+    }
+
+    overlapScoreChart = new Chart(canvas, {
+        type: "bar",
+        data: {
+            labels,
+            datasets: [
+                {
+                    type: "bar",
+                    label: "Человек",
+                    data: counts,
+                    backgroundColor: barColors,
+                    borderRadius: 6,
+                    maxBarThickness: 28,
+                    order: 2,
+                },
+                {
+                    type: "line",
+                    label: "Огибающая",
+                    data: counts,
+                    borderColor: "#0f2d4d",
+                    backgroundColor: "rgba(15, 45, 77, 0.08)",
+                    borderWidth: 2,
+                    tension: 0.4,
+                    pointRadius: counts.map((_, index) => (index === modeIndex ? 5 : 0)),
+                    pointHoverRadius: 4,
+                    pointBackgroundColor: "#FF6B9D",
+                    pointBorderColor: "#0f2d4d",
+                    pointBorderWidth: 2,
+                    fill: false,
+                    order: 1,
+                },
+            ],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: {
+                duration: 700,
+                easing: "easeOutQuart",
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: "#0f2d4d",
+                    titleFont: { size: 13, weight: "700" },
+                    bodyFont: { size: 12 },
+                    padding: 12,
+                    cornerRadius: 10,
+                    filter(item) {
+                        return item.dataset.type !== "line";
+                    },
+                    callbacks: {
+                        label(context) {
+                            return ` ${context.raw || 0} чел.`;
+                        },
+                    },
+                },
+            },
+            scales: {
+                x: {
+                    ticks: {
+                        maxRotation: 45,
+                        minRotation: 0,
+                        autoSkip: true,
+                        font: { size: 10 },
+                    },
+                    grid: { display: false },
+                },
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        precision: 0,
+                        font: { size: 10 },
+                    },
+                    grid: { color: "rgba(77, 166, 255, 0.12)" },
+                },
+            },
+        },
+    });
+}
+
 if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", initAnalyticsPage);
 } else {
     initAnalyticsPage();
 }
+
+document.body.addEventListener("htmx:afterSwap", (event) => {
+    const target = event.target;
+    if (
+        target?.id === "overlap-content"
+        || target?.querySelector?.("#overlap-score-chart")
+        || target?.querySelector?.("#overlap-score-distribution")
+    ) {
+        initOverlapScoreChart();
+    }
+});
 </script>
 
 {% endif %}

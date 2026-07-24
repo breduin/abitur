@@ -28,10 +28,12 @@ from apps.admissions.clients.university_client import UniversityAPIClient
 from apps.admissions.models import ApplicantProfile, SyncJob
 from apps.admissions.services.applicant_overlap_service import (
     NOT_ENROLLED_LABEL,
+    ApplicantOverlapRow,
     build_appearance_index,
     build_enrollment_labels_by_abiturient,
     build_overlap_context,
     compute_overlap_stats,
+    compute_score_distribution,
     get_applicant_overlap_rows,
     get_user_applied_directions,
 )
@@ -1807,6 +1809,75 @@ class ApplicantOverlapServiceTests(TestCase):
         self.assertIn("with_consent", context["overlap_stats"])
         self.assertEqual(context["overlap_stats"]["with_consent"]["count"], 1)
         self.assertEqual(len(context["overlap_rows"]), 2)
+        self.assertGreater(context["overlap_score_distribution"]["total"], 0)
+        self.assertEqual(context["overlap_score_distribution"]["labels"][-1], "Олимп.")
+
+    def test_compute_score_distribution_bins_and_olympiads(self):
+        rows = [
+            ApplicantOverlapRow(
+                abiturient_id="O1",
+                position=1,
+                nsummark=0,
+                other_applications="",
+                modeling_result="",
+                has_enrollment_consent=True,
+                is_olympiad=True,
+            ),
+            ApplicantOverlapRow(
+                abiturient_id="R1",
+                position=2,
+                nsummark=307,
+                other_applications="",
+                modeling_result="",
+                has_enrollment_consent=False,
+            ),
+            ApplicantOverlapRow(
+                abiturient_id="R2",
+                position=3,
+                nsummark=308,
+                other_applications="",
+                modeling_result="",
+                has_enrollment_consent=False,
+            ),
+            ApplicantOverlapRow(
+                abiturient_id="R3",
+                position=4,
+                nsummark=303,
+                other_applications="",
+                modeling_result="",
+                has_enrollment_consent=False,
+            ),
+            ApplicantOverlapRow(
+                abiturient_id="R4",
+                position=5,
+                nsummark=290,
+                other_applications="",
+                modeling_result="",
+                has_enrollment_consent=False,
+            ),
+            ApplicantOverlapRow(
+                abiturient_id="O2",
+                position=6,
+                nsummark=0,
+                other_applications="",
+                modeling_result="",
+                has_enrollment_consent=False,
+                is_olympiad=True,
+            ),
+        ]
+        distribution = compute_score_distribution(rows, cutoff_score=301)
+        self.assertEqual(distribution["olympiad_count"], 2)
+        self.assertEqual(distribution["labels"][-1], "Олимп.")
+        self.assertEqual(distribution["counts"][-1], 2)
+        self.assertEqual(distribution["labels"][0], "301–305")
+        self.assertEqual(distribution["labels"][1], "306–310")
+        self.assertEqual(distribution["counts"][0], 1)
+        self.assertEqual(distribution["counts"][1], 2)
+        self.assertNotIn("286–290", distribution["labels"])
+        self.assertEqual(distribution["mode_score"], 0)
+        self.assertEqual(distribution["mode_label"], "Олимп.")
+        self.assertEqual(distribution["mode_count"], 2)
+        self.assertEqual(distribution["cutoff_score"], 301)
 
     def test_build_enrollment_labels_from_consent_modeling(self):
         consent_modeling = {

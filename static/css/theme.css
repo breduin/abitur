@@ -384,8 +384,29 @@ body {
     align-self: center;
 }
 
+.analytics-overlap-stats-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 1.25rem;
+    align-items: stretch;
+}
+
+.analytics-overlap-stats,
+.analytics-overlap-histogram {
+    min-width: 0;
+}
+
+.analytics-overlap-histogram__chart {
+    position: relative;
+    height: 11.5rem;
+}
+
 @media (max-width: 767.98px) {
     .analytics-overlap-form {
+        grid-template-columns: 1fr;
+    }
+
+    .analytics-overlap-stats-layout {
         grid-template-columns: 1fr;
     }
 }
